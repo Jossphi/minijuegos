@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useAdminAction } from "./useAdmin";
 
-type Ev = { id: string; slug: string; name: string; is_active: boolean; teams: number; people: number; claimed: number };
+type Ev = { id: string; slug: string; name: string; is_active: boolean; teams: number; people: number; drawn: number };
 
 export default function AdminHome({ events }: { events: Ev[] }) {
   const router = useRouter();
@@ -51,7 +51,7 @@ export default function AdminHome({ events }: { events: Ev[] }) {
             <div className="mt-4 flex gap-4 text-sm text-white/75">
               <span>👥 {e.teams} equipos</span>
               <span>🎅 {e.people} personas</span>
-              <span>✅ {e.claimed} registrados</span>
+              <span>🎁 {e.drawn} ya sortearon</span>
             </div>
           </Link>
         ))}

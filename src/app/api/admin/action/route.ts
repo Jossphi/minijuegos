@@ -22,7 +22,6 @@ export async function POST(req: Request) {
       case "createTeam":
         return S.adminCreateTeam(str(a.eventId), {
           name: str(a.name), color: str(a.color), draw_mode: str(a.draw_mode) as DrawMode,
-          auto_draw: a.auto_draw !== false,
         });
       case "updateTeam":
         return S.adminUpdateTeam(str(a.teamId), a as Parameters<typeof S.adminUpdateTeam>[1]);
@@ -40,10 +39,8 @@ export async function POST(req: Request) {
         return S.adminAddExclusion(str(a.teamId), str(a.a), str(a.b));
       case "removeExclusion":
         return S.adminRemoveExclusion(str(a.teamId), str(a.a), str(a.b));
-      case "draw":
-        return S.adminDrawTeam(str(a.teamId), a.force === true);
-      case "cancelDraw":
-        return S.adminCancelDraw(str(a.teamId));
+      case "resetTeamDraw":
+        return S.adminResetTeamDraw(str(a.teamId));
       default:
         throw new S.UserError("Acción desconocida");
     }

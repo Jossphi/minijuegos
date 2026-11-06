@@ -1,98 +1,61 @@
 /**
  * Cifrado del sorteo.
  *
- * Cada participante elige una clave secreta al registrarse. De esa clave se deriva
- * (scrypt) un par de llaves X25519. En la base de datos solo se guarda la llave
- * PÚBLICA. Cuando se hace el sorteo, el servidor cifra "a quién le toca" con la
- * llave pública de cada persona y descarta el resultado en claro: nunca se guarda.
+ * Cada resultado ("a quién le regala X") se guarda cifrado con AES-256-GCM usando una
+ * llave derivada de DRAW_SECRET (variable de entorno del servidor) + el id de quien regala.
+ * La base de datos nunca guarda el resultado en claro y el panel de admin no tiene forma
+ * de descifrarlo: solo el endpoint del participante, tras validar su PIN.
  *
- * Para leer su resultado, la persona escribe su clave → se vuelve a derivar la
- * llave privada → se descifra. Ni el admin ni quien mire la base de datos puede
- * leer los resultados sin las claves de cada uno.
+ * El PIN de 4 dígitos se guarda solo como hash scrypt (con sal).
  */
-import {
-  createCipheriv,
-  createDecipheriv,
-  createPrivateKey,
-  createPublicKey,
-  diffieHellman,
-  generateKeyPairSync,
-  hkdfSync,
-  randomBytes,
-  scrypt,
-  timingSafeEqual,
-  type KeyObject,
-} from "node:crypto";
+import { createCipheriv, createDecipheriv, hkdfSync, randomBytes, scrypt, timingSafeEqual } from "node:crypto";
 
-const SCRYPT = { N: 1 << 15, r: 8, p: 1, maxmem: 64 * 1024 * 1024 };
-const PKCS8_X25519_PREFIX = Buffer.from("302e020100300506032b656e04220420", "hex");
-const INFO = Buffer.from("amigo-secreto/v1");
+export const PIN_REGEX = /^\d{4}$/;
+const PIN_SCRYPT = { N: 1 << 14, r: 8, p: 1 };
+const INFO = Buffer.from("amigo-secreto/draw/v2");
 
-export const MIN_SECRET_LENGTH = 6;
-
-export function normalizeSecret(secret: string) {
-  return secret.normalize("NFKC").trim();
+function masterKey(): Buffer {
+  const s = process.env.DRAW_SECRET;
+  if (!s || s.length < 16) throw new Error("DRAW_SECRET debe tener al menos 16 caracteres");
+  return Buffer.from(s, "utf8");
 }
 
-function deriveSeed(secret: string, salt: Buffer): Promise<Buffer> {
+function keyFor(giverId: string): Buffer {
+  return Buffer.from(hkdfSync("sha256", masterKey(), Buffer.from(giverId), INFO, 32));
+}
+
+/** Cifra el resultado de un participante. */
+export function sealForGiver(giverId: string, plaintext: string): string {
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", keyFor(giverId), iv);
+  cipher.setAAD(Buffer.from(giverId));
+  const ct = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
+  return ["v2", iv.toString("base64"), cipher.getAuthTag().toString("base64"), ct.toString("base64")].join(".");
+}
+
+export function openForGiver(giverId: string, sealed: string): string {
+  const [v, ivB64, tagB64, ctB64] = sealed.split(".");
+  if (v !== "v2") throw new Error("Formato de cifrado desconocido");
+  const decipher = createDecipheriv("aes-256-gcm", keyFor(giverId), Buffer.from(ivB64, "base64"));
+  decipher.setAAD(Buffer.from(giverId));
+  decipher.setAuthTag(Buffer.from(tagB64, "base64"));
+  return Buffer.concat([decipher.update(Buffer.from(ctB64, "base64")), decipher.final()]).toString("utf8");
+}
+
+function scryptAsync(pin: string, salt: Buffer): Promise<Buffer> {
   return new Promise((resolve, reject) =>
-    scrypt(normalizeSecret(secret), salt, 32, SCRYPT, (err, key) => (err ? reject(err) : resolve(key))),
+    scrypt(pin, salt, 32, PIN_SCRYPT, (err, key) => (err ? reject(err) : resolve(key))),
   );
 }
 
-function privateKeyFromSeed(seed: Buffer): KeyObject {
-  return createPrivateKey({ key: Buffer.concat([PKCS8_X25519_PREFIX, seed]), format: "der", type: "pkcs8" });
-}
-
-function rawPublic(key: KeyObject): Buffer {
-  const der = createPublicKey(key).export({ format: "der", type: "spki" }) as Buffer;
-  return der.subarray(der.length - 32);
-}
-
-function publicKeyFromRaw(raw: Buffer): KeyObject {
-  const spki = Buffer.concat([Buffer.from("302a300506032b656e032100", "hex"), raw]);
-  return createPublicKey({ key: spki, format: "der", type: "spki" });
-}
-
-/** Al registrarse: devuelve la sal y la llave pública que se guardan en la BD. */
-export async function createKeyMaterial(secret: string) {
+export async function hashPin(pin: string) {
   const salt = randomBytes(16);
-  const seed = await deriveSeed(secret, salt);
-  const pub = rawPublic(privateKeyFromSeed(seed));
-  return { kdfSalt: salt.toString("base64"), publicKey: pub.toString("base64") };
+  const hash = await scryptAsync(pin, salt);
+  return { salt: salt.toString("base64"), hash: hash.toString("base64") };
 }
 
-/** Comprueba la clave y devuelve la llave privada si es correcta. */
-export async function unlock(secret: string, kdfSalt: string, publicKey: string): Promise<KeyObject | null> {
-  const seed = await deriveSeed(secret, Buffer.from(kdfSalt, "base64"));
-  const priv = privateKeyFromSeed(seed);
-  const expected = Buffer.from(publicKey, "base64");
-  const actual = rawPublic(priv);
-  if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) return null;
-  return priv;
-}
-
-/** Cifra un texto para el dueño de `publicKey` (ECIES: X25519 + HKDF + AES-256-GCM). */
-export function sealFor(publicKey: string, plaintext: string): string {
-  const recipientRaw = Buffer.from(publicKey, "base64");
-  const eph = generateKeyPairSync("x25519");
-  const ephRaw = rawPublic(eph.privateKey);
-  const shared = diffieHellman({ privateKey: eph.privateKey, publicKey: publicKeyFromRaw(recipientRaw) });
-  const key = Buffer.from(hkdfSync("sha256", shared, Buffer.concat([ephRaw, recipientRaw]), INFO, 32));
-  const iv = randomBytes(12);
-  const cipher = createCipheriv("aes-256-gcm", key, iv);
-  const ct = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
-  return ["v1", ephRaw, iv, cipher.getAuthTag(), ct].map((p) => (typeof p === "string" ? p : p.toString("base64"))).join(".");
-}
-
-export function open(privateKey: KeyObject, sealed: string): string {
-  const [v, ephB64, ivB64, tagB64, ctB64] = sealed.split(".");
-  if (v !== "v1") throw new Error("Formato de cifrado desconocido");
-  const ephRaw = Buffer.from(ephB64, "base64");
-  const recipientRaw = rawPublic(privateKey);
-  const shared = diffieHellman({ privateKey, publicKey: publicKeyFromRaw(ephRaw) });
-  const key = Buffer.from(hkdfSync("sha256", shared, Buffer.concat([ephRaw, recipientRaw]), INFO, 32));
-  const decipher = createDecipheriv("aes-256-gcm", key, Buffer.from(ivB64, "base64"));
-  decipher.setAuthTag(Buffer.from(tagB64, "base64"));
-  return Buffer.concat([decipher.update(Buffer.from(ctB64, "base64")), decipher.final()]).toString("utf8");
+export async function verifyPin(pin: string, salt: string, hash: string) {
+  const actual = await scryptAsync(pin, Buffer.from(salt, "base64"));
+  const expected = Buffer.from(hash, "base64");
+  return actual.length === expected.length && timingSafeEqual(actual, expected);
 }

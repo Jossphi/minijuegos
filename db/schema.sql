@@ -64,6 +64,10 @@ create table if not exists assignments (
   created_at  timestamptz not null default now()
 );
 
+-- v2: sorteo instantáneo con PIN de 4 dígitos (hash scrypt)
+alter table participants add column if not exists pin_salt text;
+alter table participants add column if not exists pin_hash text;
+
 create index if not exists teams_event_idx on teams(event_id);
 create index if not exists participants_team_idx on participants(team_id);
 create index if not exists assignments_team_idx on assignments(team_id);

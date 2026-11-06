@@ -8,16 +8,16 @@ type Event = {
   id: string; slug: string; name: string; budget: string | null;
   exchange_date: string | null; message: string | null; is_active: boolean;
 };
-type P = { id: string; name: string; claimed: boolean; revealed: boolean; locked: boolean };
+type P = { id: string; name: string; drawn: boolean; locked: boolean };
 type Team = {
-  id: string; name: string; color: string; draw_mode: "cycle" | "free"; auto_draw: boolean;
+  id: string; name: string; color: string; draw_mode: "cycle" | "free";
   drawn_at: string | null; participants: P[]; exclusions: { a_id: string; b_id: string }[];
 };
 
 export default function EventManager({ event, teams }: { event: Event; teams: Team[] }) {
   const total = teams.reduce((n, t) => n + t.participants.length, 0);
-  const claimed = teams.reduce((n, t) => n + t.participants.filter((p) => p.claimed).length, 0);
-  const revealed = teams.reduce((n, t) => n + t.participants.filter((p) => p.revealed).length, 0);
+  const drawn = teams.reduce((n, t) => n + t.participants.filter((p) => p.drawn).length, 0);
+  const pct = total ? Math.round((drawn / total) * 100) : 0;
 
   return (
     <div className="space-y-8">
@@ -26,15 +26,27 @@ export default function EventManager({ event, teams }: { event: Event; teams: Te
         <h1 className="font-display text-5xl font-bold"><span className="text-shine">{event.name}</span></h1>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-3">
-        <Stat emoji="🎅" label="Participantes" value={total} />
-        <Stat emoji="🔐" label="Registrados" value={`${claimed} / ${total}`} />
-        <Stat emoji="🎁" label="Ya vieron su amigo" value={`${revealed} / ${total}`} />
+      <div className="glass p-6">
+        <div className="flex flex-wrap items-end justify-between gap-2">
+          <div>
+            <div className="text-sm text-white/60">🎁 Ya tienen amigo secreto</div>
+            <div className="mt-1 text-5xl font-extrabold">
+              {drawn} <span className="text-2xl font-semibold text-white/50">de {total}</span>
+            </div>
+          </div>
+          <div className="text-right text-sm text-white/60">
+            {total - drawn > 0 ? `Faltan ${total - drawn} por sortear` : total ? "🎉 ¡Todos ya sortearon!" : "Añade participantes abajo"}
+          </div>
+        </div>
+        <div className="mt-4 h-4 overflow-hidden rounded-full bg-white/10">
+          <div className="h-full rounded-full bg-gradient-to-r from-santa via-gold to-pine transition-all" style={{ width: `${pct}%` }} />
+        </div>
       </div>
 
       <div className="rounded-3xl border border-gold/30 bg-gold/10 p-5 text-sm text-amber-100">
-        <b>🔒 Privacidad total:</b> cada resultado se cifra con la clave personal de quien regala. Ni este panel ni la base de
-        datos guardan &quot;quién le toca a quién&quot; en claro. Tú solo ves el estado de cada persona.
+        <b>🔒 Privacidad:</b> los resultados se guardan cifrados. Este panel solo muestra <i>quién ya sorteó</i>, nunca a quién le
+        tocó. <b>Consejo:</b> carga la lista completa de cada equipo antes de compartir el enlace; cuando alguien sortea, la
+        lista de su equipo queda fija.
       </div>
 
       <ShareLink slug={event.slug} />
@@ -45,16 +57,6 @@ export default function EventManager({ event, teams }: { event: Event; teams: Te
       </div>
 
       <EventSettings event={event} />
-    </div>
-  );
-}
-
-function Stat({ emoji, label, value }: { emoji: string; label: string; value: string | number }) {
-  return (
-    <div className="glass p-5">
-      <div className="text-3xl">{emoji}</div>
-      <div className="mt-2 text-3xl font-bold">{value}</div>
-      <div className="text-sm text-white/60">{label}</div>
     </div>
   );
 }
@@ -90,10 +92,9 @@ function TeamPanel({ team }: { team: Team }) {
   const [editing, setEditing] = useState(false);
   const [tName, setTName] = useState(team.name);
 
-  const claimed = team.participants.filter((p) => p.claimed).length;
+  const doneCount = team.participants.filter((p) => p.drawn).length;
   const total = team.participants.length;
   const drawn = !!team.drawn_at;
-  const ready = total >= 3 && claimed === total;
   const byId = new Map(team.participants.map((p) => [p.id, p.name]));
 
   return (
@@ -119,8 +120,8 @@ function TeamPanel({ team }: { team: Team }) {
           </button>
         </div>
         <div className="mt-2 flex flex-wrap gap-2 text-sm">
-          <span className="chip bg-black/25">{claimed}/{total} registrados</span>
-          {drawn ? <span className="chip bg-white text-night-950">✨ Sorteo hecho</span> : <span className="chip bg-black/25">⏳ Sin sortear</span>}
+          <span className="chip bg-white text-night-950">🎁 {doneCount}/{total} ya sortearon</span>
+          {total < 3 && <span className="chip bg-black/25">Mínimo 3 personas</span>}
         </div>
         <div className="mt-3 flex gap-1.5">
           {Object.keys(TEAM_STYLES).map((c) => (
@@ -143,27 +144,23 @@ function TeamPanel({ team }: { team: Team }) {
               <li key={p.id} className="flex flex-wrap items-center gap-2 px-3 py-2.5">
                 <span className="flex-1 font-medium">{p.name}</span>
                 {p.locked && <span className="chip bg-santa/20 text-rose-300">🔒 Bloqueado</span>}
-                {p.revealed ? (
-                  <span className="chip bg-gold/20 text-gold">🎁 Ya lo vio</span>
-                ) : p.claimed ? (
-                  <span className="chip bg-pine/20 text-emerald-300">✅ Registrado</span>
+                {p.drawn ? (
+                  <span className="chip bg-pine/20 text-emerald-300">✅ Ya tiene amigo secreto</span>
                 ) : (
-                  <span className="chip bg-white/10 text-white/55">Pendiente</span>
+                  <span className="chip bg-white/10 text-white/55">⏳ Pendiente</span>
                 )}
                 <div className="flex gap-1">
                   {p.locked && (
                     <IconBtn title="Desbloquear" onClick={() => run("unlockParticipant", { participantId: p.id })}>🔓</IconBtn>
                   )}
-                  {p.claimed && (
+                  {p.drawn && (
                     <IconBtn
-                      title="Restablecer clave"
+                      title="Restablecer PIN"
                       onClick={() =>
                         run(
                           "resetParticipant",
                           { participantId: p.id },
-                          drawn
-                            ? `¿Restablecer la clave de ${p.name}?\n\n⚠️ Esto ANULA el sorteo de "${team.name}". Cuando ${p.name} se registre de nuevo, se sorteará otra vez y todos tendrán que volver a mirar su amigo secreto.`
-                            : `¿Restablecer la clave de ${p.name}? Tendrá que registrarse de nuevo.`,
+                          `¿Restablecer el PIN de ${p.name}?\n\nPodrá volver a entrar, crear un PIN nuevo y le saldrá la MISMA persona. Nadie más se ve afectado.`,
                         )
                       }
                     >
@@ -219,18 +216,6 @@ function TeamPanel({ team }: { team: Team }) {
               </button>
             ))}
           </div>
-          <label className="mt-3 flex cursor-pointer items-start gap-3 rounded-2xl bg-black/20 p-3 text-sm">
-            <input
-              type="checkbox"
-              className="mt-0.5 h-5 w-5 accent-[#ffc93c]"
-              checked={team.auto_draw}
-              onChange={(e) => run("updateTeam", { teamId: team.id, auto_draw: e.target.checked })}
-            />
-            <span>
-              <b>Sorteo automático</b>
-              <span className="block text-white/60">Se sortea solo en cuanto se registra la última persona del equipo.</span>
-            </span>
-          </label>
         </div>
 
         {/* Exclusiones */}
@@ -272,39 +257,26 @@ function TeamPanel({ team }: { team: Team }) {
         </div>
 
         {/* Acciones de sorteo */}
-        <div className="flex flex-wrap gap-2 border-t border-white/10 pt-5">
-          {!drawn ? (
-            <button
-              className="btn-santa flex-1"
-              disabled={!ready || busy}
-              onClick={() => run("draw", { teamId: team.id }, `¿Hacer ahora el sorteo de "${team.name}"?`)}
-              title={ready ? "" : "Todos deben registrarse primero"}
-            >
-              🎲 Sortear ahora
-            </button>
+        <div className="border-t border-white/10 pt-5 text-sm text-white/60">
+          {drawn ? (
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="flex-1">🔒 La lista está fija porque ya empezaron a sortear.</span>
+              <button
+                className="btn-ghost !py-2 text-sm"
+                disabled={busy}
+                onClick={() =>
+                  run(
+                    "resetTeamDraw",
+                    { teamId: team.id },
+                    `¿Reiniciar el sorteo de "${team.name}"?\n\n⚠️ Se borran TODOS los resultados de este equipo. Todos tendrán que volver a sortear y les puede salir otra persona.`,
+                  )
+                }
+              >
+                🔄 Reiniciar sorteo del equipo
+              </button>
+            </div>
           ) : (
-            <>
-              <button
-                className="btn-gold flex-1"
-                disabled={busy}
-                onClick={() => run("draw", { teamId: team.id, force: true }, `¿Repetir el sorteo de "${team.name}"?\n\nLos resultados anteriores se perderán y todos tendrán que volver a mirar su amigo secreto.`)}
-              >
-                🔁 Repetir sorteo
-              </button>
-              <button
-                className="btn-ghost"
-                disabled={busy}
-                onClick={() => run("cancelDraw", { teamId: team.id }, `¿Anular el sorteo de "${team.name}"? Podrás editar el equipo y volver a sortear.`)}
-              >
-                Anular
-              </button>
-            </>
-          )}
-          {!drawn && !ready && (
-            <p className="w-full text-xs text-white/50">
-              {total < 3 ? "Se necesitan al menos 3 personas." : `Faltan ${total - claimed} por registrarse.`}
-              {team.auto_draw && total >= 3 && " Se sorteará solo al completarse."}
-            </p>
+            <p>🎲 El sorteo se hace solo: cuando la primera persona pulse “Sortear”, se reparten todos los amigos secretos del equipo.</p>
           )}
         </div>
         {error && <p className="rounded-xl bg-santa/15 p-3 text-sm text-rose-200">{error}</p>}

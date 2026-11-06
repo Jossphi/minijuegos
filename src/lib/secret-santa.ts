@@ -1,6 +1,6 @@
 import type { PoolClient } from "pg";
 import { query, tx } from "./db";
-import { createKeyMaterial, MIN_SECRET_LENGTH, normalizeSecret, open, sealFor, unlock } from "./crypto";
+import { hashPin, openForGiver, PIN_REGEX, sealForGiver, verifyPin } from "./crypto";
 import { generateAssignments, type DrawMode } from "./draw";
 
 export class UserError extends Error {
@@ -31,8 +31,7 @@ export type PublicTeam = {
   id: string;
   name: string;
   color: TeamColor;
-  drawn: boolean;
-  participants: { id: string; name: string; claimed: boolean }[];
+  participants: { id: string; name: string; drawn: boolean }[];
 };
 
 export type AdminTeam = {
@@ -40,10 +39,14 @@ export type AdminTeam = {
   name: string;
   color: TeamColor;
   draw_mode: DrawMode;
-  auto_draw: boolean;
   drawn_at: string | null;
-  participants: { id: string; name: string; claimed: boolean; revealed: boolean; locked: boolean }[];
+  participants: { id: string; name: string; drawn: boolean; locked: boolean }[];
   exclusions: { a_id: string; b_id: string }[];
+};
+
+export type DrawResult = {
+  me: { name: string; wishlist: string | null };
+  receiver: { name: string; wishlist: string | null };
 };
 
 // ───────────────────────── Utilidades ─────────────────────────
@@ -95,22 +98,19 @@ export async function getEventBySlug(slug: string): Promise<EventRow | null> {
 export async function getPublicEvent(slug: string) {
   const event = await getEventBySlug(slug);
   if (!event || !event.is_active) return null;
-  const teams = await query<{ id: string; name: string; color: TeamColor; drawn_at: string | null }>(
-    `select id, name, color, drawn_at from teams where event_id = $1 order by created_at, name`,
+  const teams = await query<{ id: string; name: string; color: TeamColor }>(
+    `select id, name, color from teams where event_id = $1 order by created_at, name`,
     [event.id],
   );
-  const people = await query<{ id: string; team_id: string; name: string; claimed: boolean }>(
-    `select p.id, p.team_id, p.name, p.claimed_at is not null as claimed
+  const people = await query<{ id: string; team_id: string; name: string; drawn: boolean }>(
+    `select p.id, p.team_id, p.name, p.claimed_at is not null as drawn
        from participants p join teams t on t.id = p.team_id
       where t.event_id = $1 order by p.name`,
     [event.id],
   );
   const out: PublicTeam[] = teams.map((t) => ({
-    id: t.id,
-    name: t.name,
-    color: t.color,
-    drawn: !!t.drawn_at,
-    participants: people.filter((p) => p.team_id === t.id).map(({ id, name, claimed }) => ({ id, name, claimed })),
+    ...t,
+    participants: people.filter((p) => p.team_id === t.id).map(({ id, name, drawn }) => ({ id, name, drawn })),
   }));
   return { event, teams: out };
 }
@@ -121,8 +121,8 @@ type ParticipantFull = {
   id: string;
   team_id: string;
   name: string;
-  kdf_salt: string | null;
-  public_key: string | null;
+  pin_salt: string | null;
+  pin_hash: string | null;
   claimed_at: string | null;
   wishlist: string | null;
   failed_attempts: number;
@@ -140,43 +140,50 @@ async function loadParticipant(participantId: string, eventSlug: string) {
   return p;
 }
 
-/** Primera visita: la persona elige su clave secreta (y opcionalmente su lista de deseos). */
-export async function claimParticipant(eventSlug: string, participantId: string, secret: string, wishlist?: string) {
-  if (normalizeSecret(secret).length < MIN_SECRET_LENGTH)
-    throw new UserError(`La clave secreta debe tener al menos ${MIN_SECRET_LENGTH} caracteres`);
-  const p = await loadParticipant(participantId, eventSlug);
-  if (p.claimed_at) throw new UserError("Esta persona ya se registró. Usa tu clave para entrar.", 409);
-
-  const { kdfSalt, publicKey } = await createKeyMaterial(secret);
-  const updated = await query(
-    `update participants set kdf_salt = $2, public_key = $3, claimed_at = now(), wishlist = $4
-      where id = $1 and claimed_at is null returning id`,
-    [p.id, kdfSalt, publicKey, cleanText(wishlist)],
+async function resultFor(p: ParticipantFull): Promise<DrawResult> {
+  const [a] = await query<{ ciphertext: string }>(`select ciphertext from assignments where giver_id = $1`, [p.id]);
+  if (!a) throw new UserError("El sorteo de tu equipo fue reiniciado. Vuelve a sortear.", 409);
+  const { r } = JSON.parse(openForGiver(p.id, a.ciphertext)) as { r: string };
+  const [receiver] = await query<{ name: string; wishlist: string | null }>(
+    `select name, wishlist from participants where id = $1`,
+    [r],
   );
-  if (!updated.length) throw new UserError("Esta persona ya se registró. Usa tu clave para entrar.", 409);
-
-  // Sorteo automático cuando se completa el equipo
-  const drew = await tx(async (c) => {
-    const team = await lockTeam(c, p.team_id);
-    if (!team.auto_draw || team.drawn_at) return false;
-    const pending = await c.query(`select 1 from participants where team_id = $1 and claimed_at is null limit 1`, [p.team_id]);
-    const count = await c.query(`select count(*)::int as n from participants where team_id = $1`, [p.team_id]);
-    if (pending.rowCount || count.rows[0].n < 3) return false;
-    await drawInTx(c, team);
-    return true;
-  });
-  return { teamDrawn: drew };
+  if (!receiver) throw new UserError("Tu amigo secreto ya no está en el equipo. Avisa al organizador.", 410);
+  const [me] = await query<{ name: string; wishlist: string | null }>(`select name, wishlist from participants where id = $1`, [p.id]);
+  return { me, receiver };
 }
 
-async function verifySecret(p: ParticipantFull, secret: string) {
-  if (!p.claimed_at || !p.kdf_salt || !p.public_key)
-    throw new UserError("Todavía no te has registrado. Elige tu clave primero.", 409);
+/**
+ * El participante pulsa "Sortear": crea su PIN y descubre a su amigo secreto.
+ * Si es el primero de su equipo, aquí se genera (y cifra) el sorteo completo del equipo.
+ */
+export async function drawForParticipant(eventSlug: string, participantId: string, pin: string, wishlist?: string) {
+  if (!PIN_REGEX.test(pin)) throw new UserError("El PIN debe tener exactamente 4 números");
+  const p = await loadParticipant(participantId, eventSlug);
+  if (p.claimed_at) throw new UserError("Ya sorteaste. Escribe tu PIN para volver a ver a tu amigo secreto.", 409);
+
+  const { salt, hash } = await hashPin(pin);
+  await tx(async (c) => {
+    const team = await lockTeam(c, p.team_id);
+    if (!team.drawn_at) await drawInTx(c, team);
+    const r = await c.query(
+      `update participants set pin_salt = $2, pin_hash = $3, claimed_at = now(), revealed_at = now(),
+              wishlist = coalesce($4, wishlist), failed_attempts = 0, locked_until = null
+        where id = $1 and claimed_at is null returning id`,
+      [p.id, salt, hash, cleanText(wishlist)],
+    );
+    if (!r.rowCount) throw new UserError("Ya sorteaste. Escribe tu PIN para volver a ver a tu amigo secreto.", 409);
+  });
+  return resultFor(p);
+}
+
+async function checkPin(p: ParticipantFull, pin: string) {
+  if (!p.claimed_at || !p.pin_salt || !p.pin_hash) throw new UserError("Todavía no has sorteado.", 409);
   if (p.locked_until && new Date(p.locked_until) > new Date()) {
     const mins = Math.ceil((new Date(p.locked_until).getTime() - Date.now()) / 60000);
     throw new UserError(`Demasiados intentos. Vuelve a intentarlo en ${mins} min.`, 429);
   }
-  const key = await unlock(secret, p.kdf_salt, p.public_key);
-  if (!key) {
+  if (!PIN_REGEX.test(pin) || !(await verifyPin(pin, p.pin_salt, p.pin_hash))) {
     const [{ failed_attempts }] = await query<{ failed_attempts: number }>(
       `update participants set failed_attempts = failed_attempts + 1,
               locked_until = case when failed_attempts + 1 >= $2 then now() + ($3 || ' minutes')::interval else locked_until end
@@ -185,66 +192,39 @@ async function verifySecret(p: ParticipantFull, secret: string) {
     );
     const left = MAX_ATTEMPTS - failed_attempts;
     throw new UserError(
-      left > 0 ? `Clave incorrecta. Te quedan ${left} intento(s).` : `Clave incorrecta. Bloqueado por ${LOCK_MINUTES} minutos.`,
+      left > 0 ? `PIN incorrecto. Te quedan ${left} intento(s).` : `PIN incorrecto. Bloqueado por ${LOCK_MINUTES} minutos.`,
       401,
     );
   }
   if (p.failed_attempts > 0) await query(`update participants set failed_attempts = 0, locked_until = null where id = $1`, [p.id]);
-  return key;
 }
 
-/** Entrar con la clave: devuelve el amigo secreto si el sorteo ya se hizo. */
-export async function reveal(eventSlug: string, participantId: string, secret: string) {
+/** Volver a ver el resultado con el PIN. */
+export async function reveal(eventSlug: string, participantId: string, pin: string) {
   const p = await loadParticipant(participantId, eventSlug);
-  const key = await verifySecret(p, secret);
-
-  const [a] = await query<{ ciphertext: string }>(`select ciphertext from assignments where giver_id = $1`, [p.id]);
-  if (!a) {
-    const [s] = await query<{ claimed: number; total: number }>(
-      `select count(*) filter (where claimed_at is not null)::int as claimed, count(*)::int as total
-         from participants where team_id = $1`,
-      [p.team_id],
-    );
-    return { status: "waiting" as const, me: { name: p.name, wishlist: p.wishlist }, progress: s };
-  }
-
-  const { r } = JSON.parse(open(key, a.ciphertext)) as { r: string };
-  const [receiver] = await query<{ name: string; wishlist: string | null }>(
-    `select name, wishlist from participants where id = $1`,
-    [r],
-  );
-  if (!receiver) throw new UserError("Tu amigo secreto ya no está en el equipo. Avisa al organizador.", 410);
-  await query(`update participants set revealed_at = coalesce(revealed_at, now()) where id = $1`, [p.id]);
-  return {
-    status: "revealed" as const,
-    me: { name: p.name, wishlist: p.wishlist },
-    receiver,
-  };
+  await checkPin(p, pin);
+  return resultFor(p);
 }
 
-export async function updateWishlist(eventSlug: string, participantId: string, secret: string, wishlist: string) {
+export async function updateWishlist(eventSlug: string, participantId: string, pin: string, wishlist: string) {
   const p = await loadParticipant(participantId, eventSlug);
-  await verifySecret(p, secret);
+  await checkPin(p, pin);
   await query(`update participants set wishlist = $2 where id = $1`, [p.id, cleanText(wishlist)]);
 }
 
 // ───────────────────────── Sorteo ─────────────────────────
 
-type TeamLock = { id: string; draw_mode: DrawMode; auto_draw: boolean; drawn_at: string | null };
+type TeamLock = { id: string; draw_mode: DrawMode; drawn_at: string | null };
 
 async function lockTeam(c: PoolClient, teamId: string): Promise<TeamLock> {
-  const r = await c.query<TeamLock>(`select id, draw_mode, auto_draw, drawn_at from teams where id::text = $1 for update`, [teamId]);
+  const r = await c.query<TeamLock>(`select id, draw_mode, drawn_at from teams where id::text = $1 for update`, [teamId]);
   if (!r.rowCount) throw new UserError("Equipo no encontrado", 404);
   return r.rows[0];
 }
 
 async function drawInTx(c: PoolClient, team: TeamLock) {
-  const people = await c.query<{ id: string; public_key: string | null }>(
-    `select id, public_key from participants where team_id = $1`,
-    [team.id],
-  );
-  const missing = people.rows.filter((p) => !p.public_key).length;
-  if (missing) throw new UserError(`Faltan ${missing} persona(s) por registrarse en este equipo`);
+  const people = await c.query<{ id: string }>(`select id from participants where team_id = $1`, [team.id]);
+  if (people.rowCount! < 3) throw new UserError("Tu equipo aún no está listo para sortear. Avisa al organizador.");
   const ex = await c.query<{ a_id: string; b_id: string }>(`select a_id, b_id from exclusions where team_id = $1`, [team.id]);
 
   let map: Map<string, string>;
@@ -257,14 +237,13 @@ async function drawInTx(c: PoolClient, team: TeamLock) {
   } catch (e) {
     throw new UserError((e as Error).message);
   }
-  const keyOf = new Map(people.rows.map((p) => [p.id, p.public_key!]));
 
   await c.query(`delete from assignments where team_id = $1`, [team.id]);
   const givers: string[] = [];
   const ciphers: string[] = [];
   for (const [giver, receiver] of map) {
     givers.push(giver);
-    ciphers.push(sealFor(keyOf.get(giver)!, JSON.stringify({ r: receiver })));
+    ciphers.push(sealForGiver(giver, JSON.stringify({ r: receiver })));
   }
   map.clear(); // el resultado en claro no sale de esta función
   await c.query(
@@ -272,18 +251,25 @@ async function drawInTx(c: PoolClient, team: TeamLock) {
      select g, $1, ct from unnest($2::uuid[], $3::text[]) as x(g, ct)`,
     [team.id, givers, ciphers],
   );
-  await c.query(`update participants set revealed_at = null where team_id = $1`, [team.id]);
   await c.query(`update teams set drawn_at = now() where id = $1`, [team.id]);
+}
+
+async function clearClaimsInTx(c: PoolClient, teamId: string) {
+  await c.query(
+    `update participants set pin_salt = null, pin_hash = null, claimed_at = null, revealed_at = null,
+            failed_attempts = 0, locked_until = null where team_id = $1`,
+    [teamId],
+  );
 }
 
 // ───────────────────────── Administración ─────────────────────────
 
 export async function adminListEvents() {
-  const rows = await query<EventRow & { teams: number; people: number; claimed: number }>(
+  const rows = await query<EventRow & { teams: number; people: number; drawn: number }>(
     `select e.*,
             (select count(*)::int from teams t where t.event_id = e.id) as teams,
             (select count(*)::int from participants p join teams t on t.id = p.team_id where t.event_id = e.id) as people,
-            (select count(*)::int from participants p join teams t on t.id = p.team_id where t.event_id = e.id and p.claimed_at is not null) as claimed
+            (select count(*)::int from participants p join teams t on t.id = p.team_id where t.event_id = e.id and p.claimed_at is not null) as drawn
        from events e order by e.created_at desc`,
   );
   return rows.map((r) => ({ ...r, exchange_date: dateOnly(r.exchange_date) }));
@@ -293,11 +279,11 @@ export async function adminGetEvent(slug: string) {
   const event = await getEventBySlug(slug);
   if (!event) return null;
   const teams = await query<Omit<AdminTeam, "participants" | "exclusions">>(
-    `select id, name, color, draw_mode, auto_draw, drawn_at from teams where event_id = $1 order by created_at, name`,
+    `select id, name, color, draw_mode, drawn_at from teams where event_id = $1 order by created_at, name`,
     [event.id],
   );
-  const people = await query<{ id: string; team_id: string; name: string; claimed: boolean; revealed: boolean; locked: boolean }>(
-    `select p.id, p.team_id, p.name, p.claimed_at is not null as claimed, p.revealed_at is not null as revealed,
+  const people = await query<{ id: string; team_id: string; name: string; drawn: boolean; locked: boolean }>(
+    `select p.id, p.team_id, p.name, p.claimed_at is not null as drawn,
             coalesce(p.locked_until > now(), false) as locked
        from participants p join teams t on t.id = p.team_id where t.event_id = $1 order by p.name`,
     [event.id],
@@ -310,7 +296,7 @@ export async function adminGetEvent(slug: string) {
     ...t,
     participants: people
       .filter((p) => p.team_id === t.id)
-      .map((p) => ({ id: p.id, name: p.name, claimed: p.claimed, revealed: p.revealed, locked: p.locked })),
+      .map((p) => ({ id: p.id, name: p.name, drawn: p.drawn, locked: p.locked })),
     exclusions: ex.filter((e) => e.team_id === t.id).map(({ a_id, b_id }) => ({ a_id, b_id })),
   }));
   return { event, teams: out };
@@ -368,11 +354,11 @@ function checkColor(color: unknown): TeamColor {
   return (TEAM_COLORS as readonly string[]).includes(String(color)) ? (color as TeamColor) : "red";
 }
 
-export async function adminCreateTeam(eventId: string, input: { name: string; color?: string; draw_mode?: DrawMode; auto_draw?: boolean }) {
+export async function adminCreateTeam(eventId: string, input: { name: string; color?: string; draw_mode?: DrawMode }) {
   try {
     const [t] = await query(
-      `insert into teams (event_id, name, color, draw_mode, auto_draw) values ($1,$2,$3,$4,$5) returning id`,
-      [eventId, cleanName(input.name), checkColor(input.color), input.draw_mode === "free" ? "free" : "cycle", input.auto_draw ?? true],
+      `insert into teams (event_id, name, color, draw_mode) values ($1,$2,$3,$4) returning id`,
+      [eventId, cleanName(input.name), checkColor(input.color), input.draw_mode === "free" ? "free" : "cycle"],
     );
     return t;
   } catch (err) {
@@ -384,23 +370,19 @@ export async function adminCreateTeam(eventId: string, input: { name: string; co
 async function assertNotDrawn(teamId: string) {
   const [t] = await query<{ drawn_at: string | null }>(`select drawn_at from teams where id = $1`, [teamId]);
   if (!t) throw new UserError("Equipo no encontrado", 404);
-  if (t.drawn_at) throw new UserError("El sorteo de este equipo ya se hizo. Anúlalo primero para hacer cambios.");
+  if (t.drawn_at)
+    throw new UserError("Este equipo ya empezó a sortear. Para cambiar la lista, primero reinicia el sorteo del equipo.");
 }
 
-export async function adminUpdateTeam(
-  teamId: string,
-  input: Partial<{ name: string; color: string; draw_mode: DrawMode; auto_draw: boolean }>,
-) {
+export async function adminUpdateTeam(teamId: string, input: Partial<{ name: string; color: string; draw_mode: DrawMode }>) {
   if (input.draw_mode !== undefined) await assertNotDrawn(teamId);
   await query(
-    `update teams set name = coalesce($2, name), color = coalesce($3, color),
-            draw_mode = coalesce($4, draw_mode), auto_draw = coalesce($5, auto_draw) where id = $1`,
+    `update teams set name = coalesce($2, name), color = coalesce($3, color), draw_mode = coalesce($4, draw_mode) where id = $1`,
     [
       teamId,
       input.name !== undefined ? cleanName(input.name) : null,
       input.color !== undefined ? checkColor(input.color) : null,
       input.draw_mode === undefined ? null : input.draw_mode === "free" ? "free" : "cycle",
-      input.auto_draw ?? null,
     ],
   );
 }
@@ -428,20 +410,13 @@ export async function adminRemoveParticipant(participantId: string) {
   await query(`delete from participants where id = $1`, [participantId]);
 }
 
-/** Para quien olvidó su clave. Si el equipo ya sorteó, el sorteo se anula (hay que repetirlo). */
+/** Para quien olvidó su PIN: puede volver a "sortear" y le saldrá el MISMO amigo secreto. */
 export async function adminResetParticipant(participantId: string) {
-  return tx(async (c) => {
-    const r = await c.query<{ team_id: string }>(`select team_id from participants where id = $1`, [participantId]);
-    if (!r.rowCount) throw new UserError("Participante no encontrado", 404);
-    const team = await lockTeam(c, r.rows[0].team_id);
-    if (team.drawn_at) await cancelInTx(c, team.id);
-    await c.query(
-      `update participants set kdf_salt = null, public_key = null, claimed_at = null,
-              failed_attempts = 0, locked_until = null, revealed_at = null where id = $1`,
-      [participantId],
-    );
-    return { drawCancelled: !!team.drawn_at };
-  });
+  await query(
+    `update participants set pin_salt = null, pin_hash = null, claimed_at = null, revealed_at = null,
+            failed_attempts = 0, locked_until = null where id = $1`,
+    [participantId],
+  );
 }
 
 export async function adminUnlockParticipant(participantId: string) {
@@ -462,23 +437,12 @@ export async function adminRemoveExclusion(teamId: string, a: string, b: string)
   await query(`delete from exclusions where team_id = $1 and a_id = $2 and b_id = $3`, [teamId, x, y]);
 }
 
-export async function adminDrawTeam(teamId: string, force = false) {
-  await tx(async (c) => {
-    const team = await lockTeam(c, teamId);
-    if (team.drawn_at && !force) throw new UserError("Este equipo ya tiene sorteo. Usa 'Repetir sorteo'.");
-    await drawInTx(c, team);
-  });
-}
-
-async function cancelInTx(c: PoolClient, teamId: string) {
-  await c.query(`delete from assignments where team_id = $1`, [teamId]);
-  await c.query(`update participants set revealed_at = null where team_id = $1`, [teamId]);
-  await c.query(`update teams set drawn_at = null where id = $1`, [teamId]);
-}
-
-export async function adminCancelDraw(teamId: string) {
+/** Borra el sorteo del equipo: todos tendrán que volver a sortear (y les puede salir otra persona). */
+export async function adminResetTeamDraw(teamId: string) {
   await tx(async (c) => {
     await lockTeam(c, teamId);
-    await cancelInTx(c, teamId);
+    await c.query(`delete from assignments where team_id = $1`, [teamId]);
+    await clearClaimsInTx(c, teamId);
+    await c.query(`update teams set drawn_at = null where id = $1`, [teamId]);
   });
 }
