@@ -1,103 +1,72 @@
-import Image from "next/image";
+import Link from "next/link";
+import { Footer, Lights, TopBar } from "@/components/ui";
+
+const GAMES = [
+  {
+    href: "/amigo-secreto",
+    title: "Amigo Secreto",
+    emoji: "🎁",
+    desc: "Sorteo 100% secreto por equipos. Ni el organizador sabe a quién le tocó quién.",
+    grad: "from-rose-500 via-red-600 to-rose-800",
+    ready: true,
+  },
+  { title: "Trivia Navideña", emoji: "🧠", desc: "¿Cuánto sabes de la Navidad? Compite por equipos.", grad: "from-emerald-500 to-teal-800" },
+  { title: "Bingo de Navidad", emoji: "🎱", desc: "Cartones digitales y bolas que caen del cielo.", grad: "from-amber-400 to-orange-700" },
+  { title: "Ruleta de Retos", emoji: "🎡", desc: "Gira la ruleta y cumple el reto navideño.", grad: "from-violet-500 to-fuchsia-800" },
+];
 
 export default function Home() {
   return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+    <>
+      <TopBar />
+      <Lights />
+      <main className="mx-auto w-full max-w-6xl px-4 pb-10 sm:px-6">
+        <section className="animate-fade-up py-10 text-center sm:py-16">
+          <div className="mb-4 text-6xl sm:text-7xl">
+            <span className="animate-float inline-block">⛄</span>
+          </div>
+          <h1 className="font-display text-5xl font-bold leading-tight sm:text-7xl">
+            <span className="text-shine">¡Que empiecen los juegos!</span>
+          </h1>
+          <p className="mx-auto mt-4 max-w-xl text-lg text-white/70">
+            Minijuegos para celebrar la Navidad con tu gente. Elige uno y que gane el espíritu navideño.
+          </p>
+        </section>
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
-        </div>
+        <section className="grid gap-5 sm:grid-cols-2">
+          {GAMES.map((g, i) => {
+            const card = (
+              <div
+                className={`group relative h-full overflow-hidden rounded-3xl bg-gradient-to-br ${g.grad} p-6 shadow-2xl transition sm:p-8 ${
+                  g.ready ? "hover:-translate-y-1 hover:shadow-rose-500/30" : "opacity-60 grayscale-[30%]"
+                }`}
+              >
+                <div aria-hidden className="absolute -right-6 -top-6 text-[9rem] opacity-20 transition group-hover:rotate-12 group-hover:scale-110">
+                  {g.emoji}
+                </div>
+                <div className="relative">
+                  <div className="text-5xl">{g.emoji}</div>
+                  <h2 className="mt-3 font-display text-4xl font-bold">{g.title}</h2>
+                  <p className="mt-2 max-w-sm text-white/85">{g.desc}</p>
+                  <div className="mt-6">
+                    {g.ready ? (
+                      <span className="btn bg-white text-night-950 group-hover:bg-gold">¡Jugar ahora! →</span>
+                    ) : (
+                      <span className="chip bg-black/30 text-white/80">🔒 Próximamente</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+            return (
+              <div key={g.title} className="animate-fade-up" style={{ animationDelay: `${i * 0.08}s` }}>
+                {g.href ? <Link href={g.href}>{card}</Link> : card}
+              </div>
+            );
+          })}
+        </section>
       </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
-    </div>
+      <Footer />
+    </>
   );
 }
