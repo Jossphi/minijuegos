@@ -1,8 +1,8 @@
 @import "tailwindcss";
 
 @theme inline {
-  --font-display: var(--font-mountains);
-  --font-sans: var(--font-fredoka);
+  --font-display: var(--font-montserrat);
+  --font-sans: var(--font-montserrat);
 
   --color-night-950: #070b1f;
   --color-night-900: #0d1433;
@@ -20,16 +20,13 @@
 
 html {
   color-scheme: dark;
-}
-
-html {
   background-color: #0d1433;
 }
 
 body {
   min-height: 100dvh;
   color: #f4f6ff;
-  font-family: var(--font-sans), system-ui, sans-serif;
+  font-family: var(--font-montserrat), system-ui, sans-serif;
 }
 
 body::before {
@@ -119,6 +116,11 @@ body::before {
 .animate-lid-off { animation: lid-off 0.8s ease-in forwards; }
 .animate-twinkle { animation: twinkle 1.6s ease-in-out infinite; }
 .animate-spin-slow { animation: spin-slow 12s linear infinite; }
+
+.font-display {
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
 
 .text-shine {
   background: linear-gradient(90deg, #ffc93c, #fff6d5, #ff3355, #ffc93c, #fff6d5);
