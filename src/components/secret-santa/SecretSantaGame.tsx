@@ -124,22 +124,48 @@ export default function SecretSantaGame({ slug, initialTeams, event }: { slug: s
 // ───────────────────────── Paso 1: buscar nombre ─────────────────────────
 
 function Search({ people, onPick }: { people: Person[]; onPick: (p: Person) => void }) {
+  const [mode, setMode] = useState<"draw" | "view">("draw");
   const [q, setQ] = useState("");
   const nq = normalize(q);
   const matches = nq ? people.filter((p) => normalize(p.name).includes(nq)).slice(0, 8) : [];
+  const viewing = mode === "view";
+
+  const tab = (m: "draw" | "view", label: string) => (
+    <button
+      type="button"
+      onClick={() => setMode(m)}
+      aria-pressed={mode === m}
+      className={`flex-1 cursor-pointer rounded-xl px-3 py-3 text-sm font-bold transition sm:text-base ${
+        mode === m ? (m === "draw" ? "bg-santa text-white shadow-lg shadow-santa/30" : "bg-gold text-night-950 shadow-lg shadow-gold/30") : "text-white/60 hover:text-white"
+      }`}
+    >
+      {label}
+    </button>
+  );
 
   return (
     <div className="animate-fade-up mx-auto max-w-xl">
       <div className="glass p-6 sm:p-8">
-        <h2 className="text-center text-2xl font-bold">¿Cómo te llamas? 👀</h2>
-        <div className="mt-4 grid grid-cols-3 gap-2 text-center text-xs text-white/70 sm:text-sm">
-          <div className="rounded-2xl bg-white/5 p-3"><div className="text-2xl">🔎</div>Busca tu nombre</div>
-          <div className="rounded-2xl bg-white/5 p-3"><div className="text-2xl">🔢</div>Crea un PIN de 4 números</div>
-          <div className="rounded-2xl bg-white/5 p-3"><div className="text-2xl">🎲</div>¡Sortea!</div>
+        <div className="flex gap-1 rounded-2xl bg-black/30 p-1">
+          {tab("draw", "🎲 Sortear")}
+          {tab("view", "🔐 Ver mi amigo secreto")}
         </div>
 
+        {viewing ? (
+          <div className="mt-5 grid grid-cols-2 gap-2 text-center text-xs text-white/70 sm:text-sm">
+            <div className="rounded-2xl bg-white/5 p-3"><div className="text-2xl">🔎</div>Busca tu nombre</div>
+            <div className="rounded-2xl bg-white/5 p-3"><div className="text-2xl">🔢</div>Escribe tu PIN de 4 números</div>
+          </div>
+        ) : (
+          <div className="mt-5 grid grid-cols-3 gap-2 text-center text-xs text-white/70 sm:text-sm">
+            <div className="rounded-2xl bg-white/5 p-3"><div className="text-2xl">🔎</div>Busca tu nombre</div>
+            <div className="rounded-2xl bg-white/5 p-3"><div className="text-2xl">🔢</div>Crea un PIN de 4 números</div>
+            <div className="rounded-2xl bg-white/5 p-3"><div className="text-2xl">🎲</div>¡Sortea!</div>
+          </div>
+        )}
+
         <input
-          className="input mt-6 text-center text-xl"
+          className="input mt-5 text-center text-xl"
           placeholder="Escribe tu nombre…"
           value={q}
           onChange={(e) => setQ(e.target.value)}
@@ -163,7 +189,9 @@ function Search({ people, onPick }: { people: Person[]; onPick: (p: Person) => v
                     <span className="block text-lg font-semibold">{p.name}</span>
                     <span className={`block text-xs ${s.text}`}>{p.team.name}</span>
                   </span>
-                  <span className="text-sm text-white/60">{p.drawn ? "🔐 Ver mi amigo" : "Soy yo →"}</span>
+                  <span className="text-right text-sm text-white/60">
+                    {p.drawn ? "🔐 Ver mi amigo" : viewing ? "Aún no sorteas · Sortear →" : "Soy yo →"}
+                  </span>
                 </button>
               );
             })}
@@ -173,6 +201,12 @@ function Search({ people, onPick }: { people: Person[]; onPick: (p: Person) => v
               </p>
             )}
           </div>
+        )}
+
+        {!nq && !viewing && (
+          <button type="button" onClick={() => setMode("view")} className="mt-4 block w-full cursor-pointer text-center text-sm text-gold underline-offset-4 hover:underline">
+            ¿Ya sorteaste? Vuelve a ver a tu amigo secreto con tu PIN →
+          </button>
         )}
       </div>
     </div>
