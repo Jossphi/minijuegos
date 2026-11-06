@@ -5,35 +5,31 @@ Plataforma de minijuegos navideños. El primero es **Amigo Secreto**: un sorteo 
 
 Stack: **Next.js 15 (App Router) + TypeScript + Tailwind CSS 4 + Postgres en Neon**.
 
-## ✨ Funciones
+## ✨ Cómo funciona el Amigo Secreto
 
-- 🎮 **Hub de minijuegos** (Amigo Secreto activo; Trivia, Bingo y Ruleta de Retos marcados como "Próximamente").
-- 👥 **Equipos**: cada equipo sortea por separado (p. ej. 2 equipos de 9 personas).
-- 🔐 **Clave personal**: cada persona elige su nombre y crea una clave secreta.
-- 🎲 **Sorteo automático** cuando se registra la última persona del equipo (o manual desde el panel).
-- 🔗 **Modos de sorteo**: _Cadena_ (un solo círculo, sin regalos mutuos) o _Libre_.
-- 🚫 **Exclusiones**: parejas que no pueden tocarse entre sí.
-- 🎁 **Revelación animada**: caja de regalo, ruleta tipo tragamonedas y confeti.
-- 📝 **Lista de deseos**: la ve solo quien te regala.
-- 💰 Presupuesto, 📅 fecha con cuenta regresiva y mensaje del evento.
-- 🛡️ Bloqueo tras 5 intentos fallidos de clave (10 min).
-- 🧝 **Panel de admin** (`/admin`): crear eventos y equipos, añadir nombres en bloque, ver estados
-  (Pendiente / Registrado / Ya lo vio), restablecer claves, repetir o anular sorteos y compartir por WhatsApp.
+**Participantes (3 pasos):**
+1. Abren el enlace y escriben su nombre (autocompletado, sin elegir equipo).
+2. Crean un **PIN de 4 números**.
+3. Pulsan **🎲 ¡Sortear!** → regalo, ruleta y confeti: ven a su amigo secreto al instante.
 
-## 🔒 Cómo se garantiza el secreto
+Con su nombre + PIN pueden volver a verlo cuando quieran. Opcionalmente dejan una lista de deseos que solo ve quien les regala.
 
-1. Al registrarse, de la clave de cada persona se deriva (con **scrypt**) un par de llaves **X25519**.
-   En la base de datos solo se guarda la **llave pública**; la clave nunca se guarda.
-2. Al sortear, el servidor calcula las parejas en memoria, cifra cada resultado con la llave pública
-   de quien regala (**X25519 + HKDF + AES-256-GCM**) y descarta el resultado en claro.
-3. La tabla `assignments` solo tiene `giver_id` + `ciphertext`. **No existe ninguna columna con el receptor.**
-4. Para ver su amigo secreto, la persona escribe su clave → se regenera la llave privada → se descifra.
+**Organizador (`/admin`):**
+- Crea el evento (presupuesto, fecha con cuenta regresiva, mensaje) y los equipos.
+- Pega los nombres de cada equipo (uno por línea).
+- Ve el contador **"X de N ya tienen amigo secreto"** y el estado de cada persona, nunca a quién le tocó.
+- 🔑 Restablecer PIN (a la persona le sale el mismo amigo), 🔓 desbloquear, 🔄 reiniciar el sorteo de un equipo.
+- Opciones por equipo: modo **Cadena** (un solo círculo, sin regalos mutuos) o **Libre**, y **exclusiones** (parejas que no pueden tocarse).
 
-Así, ni el panel de admin ni quien tenga acceso a la base de datos puede leer los resultados.
-Si alguien olvida su clave, el admin puede restablecerla, pero eso **anula y repite** el sorteo de su
-equipo (es la única forma de mantener el secreto).
+## 🔒 Privacidad
 
-> La clave pide mínimo 6 caracteres. Cuanto más larga, más difícil es adivinarla por fuerza bruta.
+- El sorteo de cada equipo se genera completo cuando sortea la primera persona (así nunca hay callejones sin salida).
+- Cada resultado se guarda cifrado con **AES-256-GCM**, con una llave derivada de `DRAW_SECRET` + el id de quien regala.
+  La tabla `assignments` no tiene ninguna columna con el receptor.
+- El PIN se guarda solo como hash **scrypt**. 5 intentos fallidos bloquean 10 minutos.
+- El panel de admin no tiene ninguna forma de ver los resultados.
+
+> `DRAW_SECRET` no debe cambiarse una vez empezado el sorteo: los resultados ya guardados dejarían de poder leerse.
 
 ## 🚀 Puesta en marcha
 
@@ -51,6 +47,7 @@ Variables de entorno:
 | `DATABASE_URL`   | Cadena de conexión de Neon (la _pooled_).                          |
 | `ADMIN_PASSWORD` | Contraseña para entrar a `/admin`.                                 |
 | `SESSION_SECRET` | Secreto aleatorio largo para la sesión del admin (`openssl rand -base64 32`). |
+| `DRAW_SECRET`    | Secreto aleatorio largo para cifrar los resultados (`openssl rand -base64 32`). |
 
 Luego entra a `/admin`, crea el evento, añade los nombres de cada equipo y comparte el enlace
 `/amigo-secreto/<evento>`.
@@ -61,9 +58,9 @@ Luego entra a `/admin`, crea el evento, añade los nombres de cada equipo y comp
 DATABASE_URL=... npm run test:smoke
 ```
 
-Simula 2 equipos de 9 personas: registro, sorteo automático, validez (nadie se toca a sí mismo, cada
-persona recibe exactamente un regalo, solo dentro de su equipo, cadena única, exclusiones), que la BD no
-contenga nombres en claro, bloqueo por intentos fallidos, restablecimiento y re-sorteo.
+Simula 2 equipos de 9 personas sorteando al instante y comprueba: nadie se toca a sí mismo, cada persona
+recibe exactamente un regalo, solo dentro de su equipo, cadena única, exclusiones, que la BD no contenga
+nombres en claro, bloqueo por PIN incorrecto, restablecer PIN (mismo amigo) y reinicio de equipo.
 
 ## 📁 Estructura
 
@@ -71,7 +68,7 @@ contenga nombres en claro, bloqueo por intentos fallidos, restablecimiento y re-
 db/schema.sql                      Esquema de la base de datos
 scripts/migrate.ts                 Aplica el esquema
 scripts/smoke-test.ts              Prueba de extremo a extremo de la lógica
-src/lib/crypto.ts                  Cifrado de resultados
+src/lib/crypto.ts                  Cifrado de resultados y hash del PIN
 src/lib/draw.ts                    Algoritmo de sorteo
 src/lib/secret-santa.ts            Lógica del juego y del panel de admin
 src/app/page.tsx                   Hub de minijuegos
