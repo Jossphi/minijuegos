@@ -133,7 +133,7 @@ async function loadParticipant(participantId: string, eventSlug: string) {
   const [p] = await query<ParticipantFull & { event_active: boolean }>(
     `select p.*, e.is_active as event_active
        from participants p join teams t on t.id = p.team_id join events e on e.id = t.event_id
-      where p.id = $1 and e.slug = $2`,
+      where p.id::text = $1 and e.slug = $2`,
     [participantId, eventSlug],
   );
   if (!p || !p.event_active) throw new UserError("Participante no encontrado", 404);
@@ -151,7 +151,7 @@ export async function claimParticipant(eventSlug: string, participantId: string,
   const updated = await query(
     `update participants set kdf_salt = $2, public_key = $3, claimed_at = now(), wishlist = $4
       where id = $1 and claimed_at is null returning id`,
-    [participantId, kdfSalt, publicKey, cleanText(wishlist)],
+    [p.id, kdfSalt, publicKey, cleanText(wishlist)],
   );
   if (!updated.length) throw new UserError("Esta persona ya se registró. Usa tu clave para entrar.", 409);
 
@@ -233,7 +233,7 @@ export async function updateWishlist(eventSlug: string, participantId: string, s
 type TeamLock = { id: string; draw_mode: DrawMode; auto_draw: boolean; drawn_at: string | null };
 
 async function lockTeam(c: PoolClient, teamId: string): Promise<TeamLock> {
-  const r = await c.query<TeamLock>(`select id, draw_mode, auto_draw, drawn_at from teams where id = $1 for update`, [teamId]);
+  const r = await c.query<TeamLock>(`select id, draw_mode, auto_draw, drawn_at from teams where id::text = $1 for update`, [teamId]);
   if (!r.rowCount) throw new UserError("Equipo no encontrado", 404);
   return r.rows[0];
 }
@@ -247,11 +247,16 @@ async function drawInTx(c: PoolClient, team: TeamLock) {
   if (missing) throw new UserError(`Faltan ${missing} persona(s) por registrarse en este equipo`);
   const ex = await c.query<{ a_id: string; b_id: string }>(`select a_id, b_id from exclusions where team_id = $1`, [team.id]);
 
-  const map = generateAssignments(
-    people.rows.map((p) => p.id),
-    ex.rows.map((e) => [e.a_id, e.b_id]),
-    team.draw_mode,
-  );
+  let map: Map<string, string>;
+  try {
+    map = generateAssignments(
+      people.rows.map((p) => p.id),
+      ex.rows.map((e) => [e.a_id, e.b_id]),
+      team.draw_mode,
+    );
+  } catch (e) {
+    throw new UserError((e as Error).message);
+  }
   const keyOf = new Map(people.rows.map((p) => [p.id, p.public_key!]));
 
   await c.query(`delete from assignments where team_id = $1`, [team.id]);

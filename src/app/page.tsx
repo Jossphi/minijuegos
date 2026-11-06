@@ -13,7 +13,7 @@ const GAMES = [
   { title: "Trivia Navideña", emoji: "🧠", desc: "¿Cuánto sabes de la Navidad? Compite por equipos.", grad: "from-emerald-500 to-teal-800" },
   { title: "Bingo de Navidad", emoji: "🎱", desc: "Cartones digitales y bolas que caen del cielo.", grad: "from-amber-400 to-orange-700" },
   { title: "Ruleta de Retos", emoji: "🎡", desc: "Gira la ruleta y cumple el reto navideño.", grad: "from-violet-500 to-fuchsia-800" },
-];
+] as { href?: string; title: string; emoji: string; desc: string; grad: string; ready?: boolean }[];
 
 export default function Home() {
   return (
