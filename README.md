@@ -9,7 +9,7 @@ Stack: **Next.js 15 (App Router) + TypeScript + Tailwind CSS 4 + Postgres en Neo
 
 **Participantes (3 pasos):**
 1. Abren el enlace y escriben su nombre (autocompletado, sin elegir equipo).
-2. Crean un **PIN de 4 números**.
+2. Crean un **PIN de 6 números**.
 3. Pulsan **🎲 ¡Sortear!** → regalo, ruleta y confeti: ven a su amigo secreto al instante.
 
 Con su nombre + PIN pueden volver a verlo cuando quieran. Opcionalmente dejan una lista de deseos que solo ve quien les regala.
@@ -18,7 +18,7 @@ Con su nombre + PIN pueden volver a verlo cuando quieran. Opcionalmente dejan un
 - Crea el evento (presupuesto, fecha con cuenta regresiva, mensaje) y los equipos.
 - Pega los nombres de cada equipo (uno por línea).
 - Ve el contador **"X de N ya tienen amigo secreto"** y el estado de cada persona, nunca a quién le tocó.
-- 🔑 Restablecer PIN (a la persona le sale el mismo amigo), 🔓 desbloquear, 🔄 reiniciar el sorteo de un equipo.
+- 🔑 Restablecer PIN (a la persona le sale el mismo amigo), 🔓 desbloquear, 🔄 reiniciar el sorteo de un equipo y 🧹 **limpiar todos los sorteos** del evento (la lista de participantes se mantiene).
 - Opciones por equipo: modo **Cadena** (un solo círculo, sin regalos mutuos) o **Libre**, y **exclusiones** (parejas que no pueden tocarse).
 
 ## 🔒 Privacidad

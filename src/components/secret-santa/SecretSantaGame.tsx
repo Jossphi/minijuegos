@@ -154,12 +154,12 @@ function Search({ people, onPick }: { people: Person[]; onPick: (p: Person) => v
         {viewing ? (
           <div className="mt-5 grid grid-cols-2 gap-2 text-center text-xs text-white/70 sm:text-sm">
             <div className="rounded-2xl bg-white/5 p-3"><div className="text-2xl">🔎</div>Busca tu nombre</div>
-            <div className="rounded-2xl bg-white/5 p-3"><div className="text-2xl">🔢</div>Escribe tu PIN de 4 números</div>
+            <div className="rounded-2xl bg-white/5 p-3"><div className="text-2xl">🔢</div>Escribe tu PIN</div>
           </div>
         ) : (
           <div className="mt-5 grid grid-cols-3 gap-2 text-center text-xs text-white/70 sm:text-sm">
             <div className="rounded-2xl bg-white/5 p-3"><div className="text-2xl">🔎</div>Busca tu nombre</div>
-            <div className="rounded-2xl bg-white/5 p-3"><div className="text-2xl">🔢</div>Crea un PIN de 4 números</div>
+            <div className="rounded-2xl bg-white/5 p-3"><div className="text-2xl">🔢</div>Crea un PIN de 6 números</div>
             <div className="rounded-2xl bg-white/5 p-3"><div className="text-2xl">🎲</div>¡Sortea!</div>
           </div>
         )}
@@ -218,17 +218,17 @@ function Search({ people, onPick }: { people: Person[]; onPick: (p: Person) => v
 function PinInput({ value, onChange, autoFocus }: { value: string; onChange: (v: string) => void; autoFocus?: boolean }) {
   return (
     <input
-      className="input mx-auto block max-w-[14rem] text-center text-3xl font-bold tracking-[0.6em]"
+      className="input mx-auto block max-w-[17rem] text-center text-3xl font-bold tracking-[0.45em]"
       type="password"
       inputMode="numeric"
-      pattern="\d{4}"
-      maxLength={4}
+      pattern="\d{4,6}"
+      maxLength={6}
       autoComplete="off"
-      placeholder="••••"
+      placeholder="••••••"
       autoFocus={autoFocus}
       value={value}
-      onChange={(e) => onChange(e.target.value.replace(/\D/g, "").slice(0, 4))}
-      aria-label="PIN de 4 números"
+      onChange={(e) => onChange(e.target.value.replace(/\D/g, "").slice(0, 6))}
+      aria-label="PIN"
     />
   );
 }
@@ -250,7 +250,7 @@ function DrawForm({
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (pin.length !== 4) return setErr("Tu PIN debe tener 4 números.");
+    if (pin.length !== 6) return setErr("Tu PIN debe tener 6 números.");
     setErr("");
     setBusy(true);
     try {
@@ -270,7 +270,7 @@ function DrawForm({
       <div className="text-5xl">🎅</div>
       <h2 className="mt-2 text-2xl font-bold">¡Hola, {p.name}!</h2>
       <p className="mt-2 text-white/70">
-        Crea un <b className="text-gold">PIN de 4 números</b>. Lo necesitarás si quieres volver a ver a tu amigo secreto.
+        Crea un <b className="text-gold">PIN de 6 números</b> y apúntalo. Lo necesitarás para volver a ver a tu amigo secreto.
       </p>
 
       <div className="mt-6">
@@ -291,7 +291,7 @@ function DrawForm({
 
       {err && <p className="mt-4 rounded-xl bg-santa/15 p-3 text-sm text-rose-200">{err}</p>}
 
-      <button className="btn-santa mt-6 w-full !py-4 text-xl" disabled={busy || pin.length !== 4}>
+      <button className="btn-santa mt-6 w-full !py-4 text-xl" disabled={busy || pin.length !== 6}>
         {busy ? "Sorteando… ⏳" : "🎲 ¡Sortear mi amigo secreto!"}
       </button>
       <button type="button" onClick={onBack} className="mt-3 cursor-pointer text-sm text-white/50 hover:text-white">
@@ -327,7 +327,7 @@ function LoginForm({ slug, p, onBack, onDone }: { slug: string; p: Person; onBac
         <PinInput value={pin} onChange={setPin} autoFocus />
       </div>
       {err && <p className="mt-4 rounded-xl bg-santa/15 p-3 text-sm text-rose-200">{err}</p>}
-      <button className="btn-gold mt-6 w-full text-lg" disabled={busy || pin.length !== 4}>
+      <button className="btn-gold mt-6 w-full text-lg" disabled={busy || pin.length < 4}>
         {busy ? "Abriendo… ⏳" : "Ver mi amigo secreto ✨"}
       </button>
       <p className="mt-4 text-xs text-white/45">¿Olvidaste tu PIN? Pídele al organizador que lo restablezca. Te saldrá la misma persona.</p>

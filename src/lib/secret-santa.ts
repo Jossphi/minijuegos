@@ -1,6 +1,6 @@
 import type { PoolClient } from "pg";
 import { query, tx } from "./db";
-import { hashPin, openForGiver, PIN_REGEX, sealForGiver, verifyPin } from "./crypto";
+import { hashPin, openForGiver, PIN_LOGIN_REGEX, PIN_REGEX, sealForGiver, verifyPin } from "./crypto";
 import { generateAssignments, type DrawMode } from "./draw";
 
 export class UserError extends Error {
@@ -158,7 +158,7 @@ async function resultFor(p: ParticipantFull): Promise<DrawResult> {
  * Si es el primero de su equipo, aquí se genera (y cifra) el sorteo completo del equipo.
  */
 export async function drawForParticipant(eventSlug: string, participantId: string, pin: string, wishlist?: string) {
-  if (!PIN_REGEX.test(pin)) throw new UserError("El PIN debe tener exactamente 4 números");
+  if (!PIN_REGEX.test(pin)) throw new UserError("El PIN debe tener exactamente 6 números");
   const p = await loadParticipant(participantId, eventSlug);
   if (p.claimed_at) throw new UserError("Ya sorteaste. Escribe tu PIN para volver a ver a tu amigo secreto.", 409);
 
@@ -183,7 +183,7 @@ async function checkPin(p: ParticipantFull, pin: string) {
     const mins = Math.ceil((new Date(p.locked_until).getTime() - Date.now()) / 60000);
     throw new UserError(`Demasiados intentos. Vuelve a intentarlo en ${mins} min.`, 429);
   }
-  if (!PIN_REGEX.test(pin) || !(await verifyPin(pin, p.pin_salt, p.pin_hash))) {
+  if (!PIN_LOGIN_REGEX.test(pin) || !(await verifyPin(pin, p.pin_salt, p.pin_hash))) {
     const [{ failed_attempts }] = await query<{ failed_attempts: number }>(
       `update participants set failed_attempts = failed_attempts + 1,
               locked_until = case when failed_attempts + 1 >= $2 then now() + ($3 || ' minutes')::interval else locked_until end
@@ -435,6 +435,18 @@ export async function adminAddExclusion(teamId: string, a: string, b: string) {
 export async function adminRemoveExclusion(teamId: string, a: string, b: string) {
   const [x, y] = a < b ? [a, b] : [b, a];
   await query(`delete from exclusions where team_id = $1 and a_id = $2 and b_id = $3`, [teamId, x, y]);
+}
+
+/** Limpia TODOS los sorteos del evento (todos los equipos). La lista de participantes y las exclusiones se mantienen. */
+export async function adminResetEventDraws(eventId: string) {
+  await tx(async (c) => {
+    const teams = await c.query<{ id: string }>(`select id from teams where event_id = $1 for update`, [eventId]);
+    for (const t of teams.rows) {
+      await c.query(`delete from assignments where team_id = $1`, [t.id]);
+      await clearClaimsInTx(c, t.id);
+    }
+    await c.query(`update teams set drawn_at = null where event_id = $1`, [eventId]);
+  });
 }
 
 /** Borra el sorteo del equipo: todos tendrán que volver a sortear (y les puede salir otra persona). */

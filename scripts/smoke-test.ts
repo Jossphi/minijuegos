@@ -4,7 +4,7 @@ import { query, pool } from "../src/lib/db";
 
 const assert = (c: unknown, m: string) => { if (!c) throw new Error("FALLO: " + m); };
 const SLUG = "test-navidad";
-const pinOf = (i: number) => String(1000 + i);
+const pinOf = (i: number) => String(100000 + i);
 
 async function expectError(fn: () => Promise<unknown>, status: number, m: string) {
   try { await fn(); } catch (e) { assert((e as S.UserError).status === status, `${m} (status ${(e as S.UserError).status})`); return; }
@@ -26,7 +26,7 @@ async function main() {
   await S.adminAddExclusion(r.id, r.participants[0].id, r.participants[1].id);
 
   // PIN inválido
-  await expectError(() => S.drawForParticipant(SLUG, r.participants[0].id, "12a4"), 400, "PIN inválido");
+  await expectError(() => S.drawForParticipant(SLUG, r.participants[0].id, "1234"), 400, "PIN de 4 rechazado al crear");
 
   for (const team of [r, d]) {
     const map = new Map<string, string>();
@@ -63,18 +63,18 @@ async function main() {
 
   // No se puede sortear dos veces
   const victim = r.participants[2];
-  await expectError(() => S.drawForParticipant(SLUG, victim.id, "9999"), 409, "doble sorteo");
+  await expectError(() => S.drawForParticipant(SLUG, victim.id, "999999"), 409, "doble sorteo");
 
   // PIN incorrecto + bloqueo
-  for (let i = 0; i < 4; i++) await expectError(() => S.reveal(SLUG, victim.id, "0000"), 401, "PIN incorrecto");
-  await expectError(() => S.reveal(SLUG, victim.id, "0000"), 401, "quinto intento");
+  for (let i = 0; i < 4; i++) await expectError(() => S.reveal(SLUG, victim.id, "000000"), 401, "PIN incorrecto");
+  await expectError(() => S.reveal(SLUG, victim.id, "000000"), 401, "quinto intento");
   await expectError(() => S.reveal(SLUG, victim.id, pinOf(2)), 429, "bloqueado");
   await S.adminUnlockParticipant(victim.id);
   const before = (await S.reveal(SLUG, victim.id, pinOf(2))).receiver.name;
 
   // Restablecer PIN: vuelve a sortear y le sale la MISMA persona
   await S.adminResetParticipant(victim.id);
-  const after = (await S.drawForParticipant(SLUG, victim.id, "4321")).receiver.name;
+  const after = (await S.drawForParticipant(SLUG, victim.id, "432100")).receiver.name;
   assert(before === after, "mismo amigo tras restablecer PIN");
   console.log("✔ bloqueo, desbloqueo y restablecer PIN (mismo amigo) OK");
 
@@ -85,8 +85,19 @@ async function main() {
   const pub2 = (await S.getPublicEvent(SLUG))!;
   assert(pub2.teams.find((t) => t.id === r.id)!.participants.every((p) => !p.drawn), "equipo reiniciado");
   const p10 = pub2.teams.find((t) => t.id === r.id)!.participants.find((p) => p.name === "Reno 10")!;
-  assert((await S.drawForParticipant(SLUG, p10.id, "1111")).receiver.name, "sorteo tras reinicio");
+  assert((await S.drawForParticipant(SLUG, p10.id, "111111")).receiver.name, "sorteo tras reinicio");
   console.log("✔ lista fija y reinicio de equipo OK");
+
+  // Limpiar todos los sorteos del evento: se mantiene la lista
+  const before2 = (await S.getPublicEvent(SLUG))!.teams.reduce((n, t) => n + t.participants.length, 0);
+  await S.adminResetEventDraws(ev.id);
+  const pub3 = (await S.getPublicEvent(SLUG))!;
+  assert(pub3.teams.reduce((n, t) => n + t.participants.length, 0) === before2, "la lista se mantiene");
+  assert(pub3.teams.every((t) => t.participants.every((p) => !p.drawn)), "nadie ha sorteado tras limpiar");
+  const left = await query(`select 1 from assignments a join teams t on t.id = a.team_id where t.event_id = $1`, [ev.id]);
+  assert(left.length === 0, "sin asignaciones tras limpiar");
+  await S.adminAddParticipants(r.id, ["Reno 11"]); // la lista vuelve a ser editable
+  console.log("✔ limpiar sorteos del evento (lista intacta) OK");
 
   await query(`delete from events where slug = $1`, [SLUG]);
   console.log("✅ Todas las pruebas pasaron");

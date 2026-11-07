@@ -6,11 +6,14 @@
  * La base de datos nunca guarda el resultado en claro y el panel de admin no tiene forma
  * de descifrarlo: solo el endpoint del participante, tras validar su PIN.
  *
- * El PIN de 4 dígitos se guarda solo como hash scrypt (con sal).
+ * El PIN (6 dígitos) se guarda solo como hash scrypt (con sal).
  */
 import { createCipheriv, createDecipheriv, hkdfSync, randomBytes, scrypt, timingSafeEqual } from "node:crypto";
 
-export const PIN_REGEX = /^\d{4}$/;
+/** PIN nuevo: 6 dígitos. */
+export const PIN_REGEX = /^\d{6}$/;
+/** Para entrar se aceptan también PINs antiguos de 4 dígitos (creados antes del cambio a 6). */
+export const PIN_LOGIN_REGEX = /^\d{4,6}$/;
 const PIN_SCRYPT = { N: 1 << 14, r: 8, p: 1 };
 const INFO = Buffer.from("amigo-secreto/draw/v2");
 

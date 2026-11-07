@@ -41,6 +41,7 @@ export default function EventManager({ event, teams }: { event: Event; teams: Te
         <div className="mt-4 h-4 overflow-hidden rounded-full bg-white/10">
           <div className="h-full rounded-full bg-gradient-to-r from-santa via-gold to-pine transition-all" style={{ width: `${pct}%` }} />
         </div>
+        <ResetDraws eventId={event.id} disabled={!teams.some((t) => t.drawn_at)} />
       </div>
 
       <div className="rounded-3xl border border-gold/30 bg-gold/10 p-5 text-sm text-amber-100">
@@ -57,6 +58,31 @@ export default function EventManager({ event, teams }: { event: Event; teams: Te
       </div>
 
       <EventSettings event={event} />
+    </div>
+  );
+}
+
+function ResetDraws({ eventId, disabled }: { eventId: string; disabled: boolean }) {
+  const { run, busy, error } = useAdminAction();
+  return (
+    <div className="mt-5 flex flex-wrap items-center gap-3 border-t border-white/10 pt-4">
+      <p className="flex-1 text-xs text-white/50">
+        Borra los resultados de <b>todos</b> los equipos para volver a sortear desde cero. La lista de participantes se mantiene.
+      </p>
+      <button
+        className="btn-ghost !py-2 text-sm text-rose-200"
+        disabled={busy || disabled}
+        title={disabled ? "Todavía nadie ha sorteado" : ""}
+        onClick={() => {
+          const ok = window.prompt(
+            "⚠️ Esto borra TODOS los sorteos de este evento.\n\nLos participantes NO se borran, pero todos tendrán que volver a sortear (con un PIN nuevo) y les puede salir otra persona.\n\nEscribe LIMPIAR para confirmar:",
+          );
+          if (ok?.trim().toUpperCase() === "LIMPIAR") run("resetEventDraws", { eventId });
+        }}
+      >
+        🧹 Limpiar sorteos
+      </button>
+      {error && <p className="w-full text-sm text-rose-300">{error}</p>}
     </div>
   );
 }

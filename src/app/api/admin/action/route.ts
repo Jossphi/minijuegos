@@ -39,6 +39,8 @@ export async function POST(req: Request) {
         return S.adminAddExclusion(str(a.teamId), str(a.a), str(a.b));
       case "removeExclusion":
         return S.adminRemoveExclusion(str(a.teamId), str(a.a), str(a.b));
+      case "resetEventDraws":
+        return S.adminResetEventDraws(str(a.eventId));
       case "resetTeamDraw":
         return S.adminResetTeamDraw(str(a.teamId));
       default:
