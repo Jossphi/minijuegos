@@ -9,13 +9,14 @@ export default function Countdown({ date }: { date: string }) {
     return () => clearInterval(t);
   }, []);
   const target = new Date(`${date}T00:00:00`);
-  const label = target.toLocaleDateString("es", { weekday: "long", day: "numeric", month: "long" });
+  const raw = target.toLocaleDateString("es", { weekday: "long", day: "numeric", month: "long" });
+  const label = raw.charAt(0).toUpperCase() + raw.slice(1);
   const days = now === null ? null : Math.ceil((target.getTime() - now) / 86_400_000);
   return (
-    <span className="chip bg-pine/15 !px-4 !py-2 !text-sm text-emerald-300">
+    <span className="chip border border-line bg-white !px-3 !py-1.5 !text-sm text-ink">
       📅 {label}
-      {days !== null && days > 0 && <b className="ml-1">· faltan {days} día{days === 1 ? "" : "s"}</b>}
-      {days === 0 && <b className="ml-1">· ¡es hoy! 🎉</b>}
+      {days !== null && days > 0 && <span className="font-bold text-pine">· faltan {days} día{days === 1 ? "" : "s"}</span>}
+      {days === 0 && <span className="font-bold text-santa">· ¡es hoy!</span>}
     </span>
   );
 }

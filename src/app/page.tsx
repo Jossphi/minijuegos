@@ -1,70 +1,52 @@
 import Link from "next/link";
-import { Footer, Lights, TopBar } from "@/components/ui";
+import { Footer, TopBar } from "@/components/ui";
 
 const GAMES = [
-  {
-    href: "/amigo-secreto",
-    title: "Amigo Secreto",
-    emoji: "🎁",
-    desc: "Sorteo 100% secreto por equipos. Ni el organizador sabe a quién le tocó quién.",
-    grad: "from-rose-500 via-red-600 to-rose-800",
-    ready: true,
-  },
-  { title: "Trivia Navideña", emoji: "🧠", desc: "¿Cuánto sabes de la Navidad? Compite por equipos.", grad: "from-emerald-500 to-teal-800" },
-  { title: "Bingo de Navidad", emoji: "🎱", desc: "Cartones digitales y bolas que caen del cielo.", grad: "from-amber-400 to-orange-700" },
-  { title: "Ruleta de Retos", emoji: "🎡", desc: "Gira la ruleta y cumple el reto navideño.", grad: "from-violet-500 to-fuchsia-800" },
-] as { href?: string; title: string; emoji: string; desc: string; grad: string; ready?: boolean }[];
+  { href: "/amigo-secreto", title: "Amigo Secreto", emoji: "🎁", desc: "Sorteo privado por equipos. Nadie, ni el organizador, sabe a quién le tocó quién." },
+  { title: "Trivia Navideña", emoji: "🧠", desc: "¿Cuánto sabes de la Navidad? Compite por equipos." },
+  { title: "Bingo de Navidad", emoji: "🎱", desc: "Cartones digitales para jugar todos juntos." },
+  { title: "Ruleta de Retos", emoji: "🎡", desc: "Gira la ruleta y cumple el reto navideño." },
+] as { href?: string; title: string; emoji: string; desc: string }[];
 
 export default function Home() {
+  const [main, ...soon] = GAMES;
   return (
     <>
       <TopBar />
-      <Lights />
-      <main className="mx-auto w-full max-w-6xl px-4 pb-10 sm:px-6">
+      <main className="mx-auto w-full max-w-5xl px-4 pb-16 sm:px-6">
         <section className="animate-fade-up py-10 text-center sm:py-16">
-          <div className="mb-4 text-6xl sm:text-7xl">
-            <span className="animate-float inline-block">⛄</span>
-          </div>
-          <h1 className="font-display text-5xl font-bold leading-tight sm:text-7xl">
-            <span className="text-shine">¡Que empiecen los juegos!</span>
+          <p className="eyebrow">Minijuegos de Navidad</p>
+          <h1 className="font-display mx-auto mt-3 max-w-2xl text-4xl leading-[1.1] text-ink sm:text-6xl">
+            Que empiecen <span className="text-santa">los juegos</span>
           </h1>
-          <p className="mx-auto mt-4 max-w-xl text-lg text-white/70">
-            Minijuegos para celebrar la Navidad con tu gente. Elige uno y que gane el espíritu navideño.
+          <p className="mx-auto mt-4 max-w-lg text-base text-muted sm:text-lg">
+            Juegos sencillos para celebrar la Navidad con tu equipo, desde cualquier celular.
           </p>
         </section>
 
-        <section className="grid gap-5 sm:grid-cols-2">
-          {GAMES.map((g, i) => {
-            const card = (
-              <div
-                className={`group relative h-full overflow-hidden rounded-3xl bg-gradient-to-br ${g.grad} p-6 shadow-2xl transition sm:p-8 ${
-                  g.ready ? "hover:-translate-y-1 hover:shadow-rose-500/30" : "opacity-60 grayscale-[30%]"
-                }`}
-              >
-                <div aria-hidden className="absolute -right-6 -top-6 text-[9rem] opacity-20 transition group-hover:rotate-12 group-hover:scale-110">
-                  {g.emoji}
-                </div>
-                <div className="relative">
-                  <div className="text-5xl">{g.emoji}</div>
-                  <h2 className="mt-3 font-display text-4xl font-bold">{g.title}</h2>
-                  <p className="mt-2 max-w-sm text-white/85">{g.desc}</p>
-                  <div className="mt-6">
-                    {g.ready ? (
-                      <span className="btn bg-white text-night-950 group-hover:bg-gold">¡Jugar ahora! →</span>
-                    ) : (
-                      <span className="chip bg-black/30 text-white/80">🔒 Próximamente</span>
-                    )}
-                  </div>
-                </div>
-              </div>
-            );
-            return (
-              <div key={g.title} className="animate-fade-up" style={{ animationDelay: `${i * 0.08}s` }}>
-                {g.href ? <Link href={g.href}>{card}</Link> : card}
-              </div>
-            );
-          })}
-        </section>
+        <Link
+          href={main.href!}
+          className="card group animate-fade-up flex flex-col gap-6 overflow-hidden p-6 transition hover:-translate-y-0.5 hover:border-stone-300 sm:flex-row sm:items-center sm:p-8"
+        >
+          <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-2xl bg-santa-soft text-5xl">{main.emoji}</div>
+          <div className="flex-1">
+            <span className="chip bg-pine-soft text-pine">● Disponible</span>
+            <h2 className="mt-2 text-2xl font-bold text-ink sm:text-3xl">{main.title}</h2>
+            <p className="mt-1 text-muted">{main.desc}</p>
+          </div>
+          <span className="btn-primary self-start sm:self-center">Jugar →</span>
+        </Link>
+
+        <h3 className="mt-12 mb-4 text-sm font-semibold text-muted">Próximamente</h3>
+        <div className="grid gap-4 sm:grid-cols-3">
+          {soon.map((g) => (
+            <div key={g.title} className="rounded-2xl border border-dashed border-line bg-white/50 p-5">
+              <div className="text-3xl opacity-70">{g.emoji}</div>
+              <div className="mt-3 font-semibold text-ink">{g.title}</div>
+              <p className="mt-1 text-sm text-muted">{g.desc}</p>
+            </div>
+          ))}
+        </div>
       </main>
       <Footer />
     </>

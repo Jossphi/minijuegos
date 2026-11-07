@@ -1,7 +1,7 @@
 "use client";
 import confetti from "canvas-confetti";
 import { useMemo, useState } from "react";
-import { teamStyle } from "@/components/ui";
+import { Steps, teamStyle } from "@/components/ui";
 import SlotReveal from "./SlotReveal";
 
 type Team = { id: string; name: string; color: string; participants: { id: string; name: string; drawn: boolean }[] };
@@ -32,14 +32,14 @@ const normalize = (s: string) =>
   s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
 
 function fireConfetti() {
-  const colors = ["#ff3355", "#ffc93c", "#16c784", "#ffffff", "#8fe3ff"];
-  const end = Date.now() + 1500;
+  const colors = ["#c8102e", "#15803d", "#f2b33d", "#ffffff"];
+  const end = Date.now() + 1200;
   (function frame() {
-    confetti({ particleCount: 5, angle: 60, spread: 70, origin: { x: 0, y: 0.7 }, colors });
-    confetti({ particleCount: 5, angle: 120, spread: 70, origin: { x: 1, y: 0.7 }, colors });
+    confetti({ particleCount: 4, angle: 60, spread: 60, origin: { x: 0, y: 0.7 }, colors });
+    confetti({ particleCount: 4, angle: 120, spread: 60, origin: { x: 1, y: 0.7 }, colors });
     if (Date.now() < end) requestAnimationFrame(frame);
   })();
-  confetti({ particleCount: 160, spread: 100, origin: { y: 0.5 }, colors, scalar: 1.2 });
+  confetti({ particleCount: 120, spread: 90, origin: { y: 0.55 }, colors });
 }
 
 export default function SecretSantaGame({ slug, initialTeams, event }: { slug: string; initialTeams: Team[]; event: EventInfo }) {
@@ -101,8 +101,8 @@ export default function SecretSantaGame({ slug, initialTeams, event }: { slug: s
       {step.k === "gift" && <GiftBox name={step.p.name} onOpen={() => setStep({ ...step, k: "spin" })} />}
 
       {step.k === "spin" && (
-        <div className="glass animate-pop-in px-10 py-10 sm:px-16">
-          <p className="mb-6 text-center text-lg text-white/70">Tu amigo secreto es…</p>
+        <div className="card animate-pop-in px-6 py-8 sm:px-10">
+          <p className="mb-5 text-center text-sm font-semibold text-muted">Tu amigo secreto es…</p>
           <SlotReveal
             names={teammates(step.p)}
             result={step.data.receiver.name}
@@ -135,8 +135,8 @@ function Search({ people, onPick }: { people: Person[]; onPick: (p: Person) => v
       type="button"
       onClick={() => setMode(m)}
       aria-pressed={mode === m}
-      className={`flex-1 cursor-pointer rounded-xl px-3 py-3 text-sm font-bold transition sm:text-base ${
-        mode === m ? (m === "draw" ? "bg-santa text-white shadow-lg shadow-santa/30" : "bg-gold text-night-950 shadow-lg shadow-gold/30") : "text-white/60 hover:text-white"
+      className={`flex-1 cursor-pointer rounded-lg px-3 py-2.5 text-sm font-semibold transition ${
+        mode === m ? "bg-white text-ink shadow-sm" : "text-muted hover:text-ink"
       }`}
     >
       {label}
@@ -144,71 +144,70 @@ function Search({ people, onPick }: { people: Person[]; onPick: (p: Person) => v
   );
 
   return (
-    <div className="animate-fade-up mx-auto max-w-xl">
-      <div className="glass p-6 sm:p-8">
-        <div className="flex gap-1 rounded-2xl bg-black/30 p-1">
-          {tab("draw", "🎲 Sortear")}
-          {tab("view", "🔐 Ver mi amigo secreto")}
-        </div>
+    <div className="card animate-fade-up p-5 sm:p-7">
+      <div className="flex gap-1 rounded-xl bg-stone-100 p-1">
+        {tab("draw", "🎲 Sortear")}
+        {tab("view", "🔐 Ver mi amigo secreto")}
+      </div>
 
-        {viewing ? (
-          <div className="mt-5 grid grid-cols-2 gap-2 text-center text-xs text-white/70 sm:text-sm">
-            <div className="rounded-2xl bg-white/5 p-3"><div className="text-2xl">🔎</div>Busca tu nombre</div>
-            <div className="rounded-2xl bg-white/5 p-3"><div className="text-2xl">🔢</div>Escribe tu PIN</div>
-          </div>
-        ) : (
-          <div className="mt-5 grid grid-cols-3 gap-2 text-center text-xs text-white/70 sm:text-sm">
-            <div className="rounded-2xl bg-white/5 p-3"><div className="text-2xl">🔎</div>Busca tu nombre</div>
-            <div className="rounded-2xl bg-white/5 p-3"><div className="text-2xl">🔢</div>Crea un PIN de 6 números</div>
-            <div className="rounded-2xl bg-white/5 p-3"><div className="text-2xl">🎲</div>¡Sortea!</div>
-          </div>
-        )}
+      <div className="mt-6">
+        {viewing ? <Steps steps={["Tu nombre", "Tu PIN"]} current={0} /> : <Steps steps={["Tu nombre", "Crea un PIN", "¡Sortea!"]} current={0} />}
+      </div>
 
-        <input
-          className="input mt-5 text-center text-xl"
-          placeholder="Escribe tu nombre…"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          autoFocus
-          autoComplete="off"
-          aria-label="Tu nombre"
-        />
+      <label htmlFor="name" className="label mt-6">
+        {viewing ? "Escribe tu nombre para ver tu resultado" : "Escribe tu nombre para empezar"}
+      </label>
+      <input
+        id="name"
+        className="input text-lg"
+        placeholder="Ej: María"
+        value={q}
+        onChange={(e) => setQ(e.target.value)}
+        autoFocus
+        autoComplete="off"
+        aria-label="Tu nombre"
+      />
 
-        {nq && (
-          <div className="mt-3 space-y-2">
-            {matches.map((p) => {
-              const s = teamStyle(p.team.color);
-              return (
+      {nq && (
+        <ul className="mt-3 divide-y divide-line overflow-hidden rounded-xl border border-line">
+          {matches.map((p) => {
+            const s = teamStyle(p.team.color);
+            return (
+              <li key={p.id}>
                 <button
-                  key={p.id}
                   onClick={() => onPick(p)}
-                  className={`animate-fade-up flex w-full cursor-pointer items-center gap-3 rounded-2xl border border-white/10 ${s.soft} px-4 py-3 text-left transition hover:ring-2 ${s.ring} active:scale-[0.98]`}
+                  className="flex w-full cursor-pointer items-center gap-3 bg-white px-4 py-3.5 text-left transition hover:bg-paper"
                 >
-                  <span className="text-2xl">{s.emoji}</span>
                   <span className="flex-1">
-                    <span className="block text-lg font-semibold">{p.name}</span>
-                    <span className={`block text-xs ${s.text}`}>{p.team.name}</span>
+                    <span className="block font-semibold text-ink">{p.name}</span>
+                    <span className={`mt-0.5 inline-flex items-center gap-1.5 text-xs font-medium ${s.text}`}>
+                      <span className={`h-2 w-2 rounded-full ${s.dot}`} />
+                      {p.team.name}
+                    </span>
                   </span>
-                  <span className="text-right text-sm text-white/60">
-                    {p.drawn ? "🔐 Ver mi amigo" : viewing ? "Aún no sorteas · Sortear →" : "Soy yo →"}
+                  <span className={`text-sm font-semibold ${p.drawn ? "text-gold" : "text-santa"}`}>
+                    {p.drawn ? "Ver mi amigo →" : viewing ? "Aún no sorteas · Sortear →" : "Soy yo →"}
                   </span>
                 </button>
-              );
-            })}
-            {!matches.length && (
-              <p className="rounded-2xl bg-white/5 p-4 text-center text-sm text-white/60">
-                No encontramos ese nombre. Revisa cómo está escrito o pregúntale al organizador. 🦌
-              </p>
-            )}
-          </div>
-        )}
+              </li>
+            );
+          })}
+          {!matches.length && (
+            <li className="bg-white p-4 text-center text-sm text-muted">
+              No encontramos ese nombre. Revisa cómo está escrito o pregúntale al organizador.
+            </li>
+          )}
+        </ul>
+      )}
 
-        {!nq && !viewing && (
-          <button type="button" onClick={() => setMode("view")} className="mt-4 block w-full cursor-pointer text-center text-sm text-gold underline-offset-4 hover:underline">
-            ¿Ya sorteaste? Vuelve a ver a tu amigo secreto con tu PIN →
+      {!nq && !viewing && (
+        <p className="mt-5 text-center text-sm text-muted">
+          ¿Ya sorteaste?{" "}
+          <button type="button" onClick={() => setMode("view")} className="cursor-pointer font-semibold text-santa hover:underline">
+            Vuelve a ver a tu amigo secreto
           </button>
-        )}
-      </div>
+        </p>
+      )}
     </div>
   );
 }
@@ -218,7 +217,7 @@ function Search({ people, onPick }: { people: Person[]; onPick: (p: Person) => v
 function PinInput({ value, onChange, autoFocus }: { value: string; onChange: (v: string) => void; autoFocus?: boolean }) {
   return (
     <input
-      className="input mx-auto block max-w-[17rem] text-center text-3xl font-bold tracking-[0.45em]"
+      className="input mx-auto block max-w-[16rem] text-center text-2xl font-bold tracking-[0.5em]"
       type="password"
       inputMode="numeric"
       pattern="\d{4,6}"
@@ -230,6 +229,20 @@ function PinInput({ value, onChange, autoFocus }: { value: string; onChange: (v:
       onChange={(e) => onChange(e.target.value.replace(/\D/g, "").slice(0, 6))}
       aria-label="PIN"
     />
+  );
+}
+
+function PersonHeader({ p, title, subtitle }: { p: Person; title: string; subtitle: React.ReactNode }) {
+  const s = teamStyle(p.team.color);
+  return (
+    <div className="text-center">
+      <span className={`chip ${s.soft} ${s.text}`}>
+        <span className={`h-2 w-2 rounded-full ${s.dot}`} />
+        {p.team.name}
+      </span>
+      <h2 className="mt-3 text-2xl font-bold text-ink">{title}</h2>
+      <p className="mx-auto mt-2 max-w-sm text-muted">{subtitle}</p>
+    </div>
   );
 }
 
@@ -266,37 +279,45 @@ function DrawForm({
   };
 
   return (
-    <form onSubmit={submit} className="glass animate-pop-in mx-auto max-w-md p-6 text-center sm:p-8">
-      <div className="text-5xl">🎅</div>
-      <h2 className="mt-2 text-2xl font-bold">¡Hola, {p.name}!</h2>
-      <p className="mt-2 text-white/70">
-        Crea un <b className="text-gold">PIN de 6 números</b> y apúntalo. Lo necesitarás para volver a ver a tu amigo secreto.
-      </p>
+    <form onSubmit={submit} className="card animate-pop-in p-6 sm:p-8">
+      <Steps steps={["Tu nombre", "Crea un PIN", "¡Sortea!"]} current={1} />
+      <div className="mt-6">
+        <PersonHeader
+          p={p}
+          title={`Hola, ${p.name}`}
+          subtitle={<>Crea un <b className="text-ink">PIN de 6 números</b> y apúntalo. Lo necesitarás para volver a ver tu resultado.</>}
+        />
+      </div>
 
       <div className="mt-6">
         <PinInput value={pin} onChange={setPin} autoFocus />
+        <p className="mt-2 text-center text-xs text-muted">{pin.length}/6</p>
       </div>
 
       {showWish ? (
-        <div className="mt-5 text-left">
-          <label className="label" htmlFor="wish">🎁 ¿Qué te gustaría recibir? (opcional)</label>
+        <div className="mt-5">
+          <label className="label" htmlFor="wish">¿Qué te gustaría recibir? <span className="font-normal text-muted">(opcional)</span></label>
           <textarea id="wish" className="input min-h-20" placeholder="Ej: chocolates, un libro, algo para la oficina… Talla M." value={wish} onChange={(e) => setWish(e.target.value)} maxLength={1000} />
-          <p className="mt-1 text-xs text-white/45">Solo lo verá quien te regale.</p>
+          <p className="mt-1 text-xs text-muted">Solo lo verá quien te regale.</p>
         </div>
       ) : (
-        <button type="button" onClick={() => setShowWish(true)} className="mt-4 cursor-pointer text-sm text-gold underline-offset-4 hover:underline">
-          + Añadir mi lista de deseos (opcional)
-        </button>
+        <p className="mt-4 text-center">
+          <button type="button" onClick={() => setShowWish(true)} className="cursor-pointer text-sm font-semibold text-pine hover:underline">
+            + Añadir mi lista de deseos (opcional)
+          </button>
+        </p>
       )}
 
-      {err && <p className="mt-4 rounded-xl bg-santa/15 p-3 text-sm text-rose-200">{err}</p>}
+      {err && <p className="mt-4 rounded-xl bg-santa-soft p-3 text-center text-sm font-medium text-santa">{err}</p>}
 
-      <button className="btn-santa mt-6 w-full !py-4 text-xl" disabled={busy || pin.length !== 6}>
-        {busy ? "Sorteando… ⏳" : "🎲 ¡Sortear mi amigo secreto!"}
+      <button className="btn-primary mt-6 w-full !py-4 text-lg" disabled={busy || pin.length !== 6}>
+        {busy ? "Sorteando…" : "🎲 Sortear mi amigo secreto"}
       </button>
-      <button type="button" onClick={onBack} className="mt-3 cursor-pointer text-sm text-white/50 hover:text-white">
-        ← No soy {p.name}
-      </button>
+      <p className="mt-3 text-center">
+        <button type="button" onClick={onBack} className="cursor-pointer text-sm text-muted hover:text-ink">
+          ← No soy {p.name}
+        </button>
+      </p>
     </form>
   );
 }
@@ -319,21 +340,24 @@ function LoginForm({ slug, p, onBack, onDone }: { slug: string; p: Person; onBac
     }
   };
   return (
-    <form onSubmit={submit} className="glass animate-pop-in mx-auto max-w-md p-6 text-center sm:p-8">
-      <div className="text-5xl">🔐</div>
-      <h2 className="mt-2 text-2xl font-bold">{p.name}, ya sorteaste ✅</h2>
-      <p className="mt-2 text-white/70">Escribe tu PIN para volver a ver a tu amigo secreto.</p>
+    <form onSubmit={submit} className="card animate-pop-in p-6 sm:p-8">
+      <Steps steps={["Tu nombre", "Tu PIN"]} current={1} />
+      <div className="mt-6">
+        <PersonHeader p={p} title={`${p.name}, ya sorteaste ✓`} subtitle="Escribe tu PIN para volver a ver a tu amigo secreto." />
+      </div>
       <div className="mt-6">
         <PinInput value={pin} onChange={setPin} autoFocus />
       </div>
-      {err && <p className="mt-4 rounded-xl bg-santa/15 p-3 text-sm text-rose-200">{err}</p>}
-      <button className="btn-gold mt-6 w-full text-lg" disabled={busy || pin.length < 4}>
-        {busy ? "Abriendo… ⏳" : "Ver mi amigo secreto ✨"}
+      {err && <p className="mt-4 rounded-xl bg-santa-soft p-3 text-center text-sm font-medium text-santa">{err}</p>}
+      <button className="btn-primary mt-6 w-full !py-4 text-lg" disabled={busy || pin.length < 4}>
+        {busy ? "Abriendo…" : "Ver mi amigo secreto"}
       </button>
-      <p className="mt-4 text-xs text-white/45">¿Olvidaste tu PIN? Pídele al organizador que lo restablezca. Te saldrá la misma persona.</p>
-      <button type="button" onClick={onBack} className="mt-3 cursor-pointer text-sm text-white/50 hover:text-white">
-        ← No soy {p.name}
-      </button>
+      <p className="mt-4 text-center text-xs text-muted">¿Olvidaste tu PIN? Pídele al organizador que lo restablezca. Te saldrá la misma persona.</p>
+      <p className="mt-2 text-center">
+        <button type="button" onClick={onBack} className="cursor-pointer text-sm text-muted hover:text-ink">
+          ← No soy {p.name}
+        </button>
+      </p>
     </form>
   );
 }
@@ -348,25 +372,24 @@ function GiftBox({ name, onOpen }: { name: string; onOpen: () => void }) {
     setTimeout(onOpen, 800);
   };
   return (
-    <div className="glass animate-pop-in mx-auto max-w-lg p-8 text-center">
-      <h2 className="text-2xl font-bold">{name}, ¡tu regalo te espera! 🎉</h2>
-      <p className="mt-1 text-white/65">Asegúrate de que nadie esté mirando tu pantalla 👀</p>
+    <div className="card animate-pop-in p-8 text-center">
+      <h2 className="text-2xl font-bold text-ink">{name}, tu regalo te espera</h2>
+      <p className="mt-1 text-muted">Asegúrate de que nadie esté mirando tu pantalla.</p>
       <button onClick={open} className="group mx-auto mt-8 block cursor-pointer" aria-label="Abrir regalo">
-        <div className={`relative mx-auto h-56 w-56 ${opening ? "" : "animate-wiggle"}`}>
-          <div className={`absolute left-1/2 top-6 z-20 h-12 w-60 -translate-x-1/2 ${opening ? "animate-lid-off" : ""}`}>
-            <div className="absolute -top-9 left-1/2 flex -translate-x-1/2 gap-1">
-              <div className="h-10 w-12 -rotate-[25deg] rounded-full border-[6px] border-gold" />
-              <div className="h-10 w-12 rotate-[25deg] rounded-full border-[6px] border-gold" />
+        <div className={`relative mx-auto h-48 w-48 ${opening ? "" : "animate-wiggle"}`}>
+          <div className={`absolute left-1/2 top-5 z-20 h-10 w-52 -translate-x-1/2 ${opening ? "animate-lid-off" : ""}`}>
+            <div className="absolute -top-8 left-1/2 flex -translate-x-1/2 gap-1">
+              <div className="h-9 w-11 -rotate-[25deg] rounded-full border-[5px] border-amber-400" />
+              <div className="h-9 w-11 rotate-[25deg] rounded-full border-[5px] border-amber-400" />
             </div>
-            <div className="h-full w-full rounded-xl bg-gradient-to-b from-rose-400 to-santa shadow-lg" />
-            <div className="absolute inset-y-0 left-1/2 w-8 -translate-x-1/2 bg-gold" />
+            <div className="h-full w-full rounded-lg bg-[#e0384f]" />
+            <div className="absolute inset-y-0 left-1/2 w-7 -translate-x-1/2 bg-amber-400" />
           </div>
-          <div className="absolute bottom-0 left-1/2 h-40 w-52 -translate-x-1/2 overflow-hidden rounded-b-2xl rounded-t-md bg-gradient-to-b from-santa to-santa-dark shadow-2xl shadow-santa/40">
-            <div className="absolute inset-y-0 left-1/2 w-8 -translate-x-1/2 bg-gold" />
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_30%,rgba(255,255,255,0.25),transparent_50%)]" />
+          <div className="absolute bottom-0 left-1/2 h-36 w-44 -translate-x-1/2 overflow-hidden rounded-b-xl rounded-t-sm bg-santa shadow-lg">
+            <div className="absolute inset-y-0 left-1/2 w-7 -translate-x-1/2 bg-amber-400" />
           </div>
         </div>
-        <span className="btn-gold mt-8 text-lg group-hover:scale-105">🎁 Toca para abrir</span>
+        <span className="btn-primary mt-8 !px-8 text-base">Toca para abrir</span>
       </button>
     </div>
   );
@@ -383,38 +406,36 @@ function ResultCard({
   onHide: () => void;
 }) {
   return (
-    <div className="animate-pop-in mx-auto max-w-lg">
-      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-santa via-rose-600 to-santa-dark p-1 shadow-2xl shadow-santa/40">
-        <div className="rounded-[calc(1.5rem-4px)] bg-night-900/90 p-7 text-center sm:p-9">
-          <p className="text-sm font-semibold uppercase tracking-[0.3em] text-gold">Tu amigo secreto es</p>
-          <div className="mt-3 font-display text-5xl leading-tight sm:text-6xl">
-            <span className="text-shine">{data.receiver.name}</span>
-          </div>
-          <div className="mt-2 text-4xl">🎁🤫</div>
+    <div className="animate-pop-in space-y-4">
+      <div className="card overflow-hidden">
+        <div className="ribbon" aria-hidden />
+        <div className="p-7 text-center sm:p-9">
+          <p className="eyebrow">Tu amigo secreto es</p>
+          <div className="font-display mt-3 text-4xl leading-tight text-ink sm:text-5xl">{data.receiver.name}</div>
 
-          <div className="mt-6 rounded-2xl bg-white/5 p-5 text-left">
-            <div className="text-sm font-semibold text-gold">📝 Su lista de deseos</div>
-            <p className="mt-2 whitespace-pre-wrap text-white/85">
-              {data.receiver.wishlist || "Todavía no ha escrito nada. ¡Usa tu creatividad! ✨"}
+          <div className="mt-6 rounded-xl bg-paper p-5 text-left">
+            <div className="text-sm font-semibold text-ink">Su lista de deseos</div>
+            <p className="mt-2 whitespace-pre-wrap text-muted">
+              {data.receiver.wishlist || "Todavía no ha escrito nada. ¡Usa tu creatividad!"}
             </p>
           </div>
 
-          <div className="mt-4 flex flex-wrap justify-center gap-2 text-sm">
-            {event.budget && <span className="chip bg-gold/15 !px-3 !py-1.5 text-gold">💰 {event.budget}</span>}
-            {event.exchange_date && (
-              <span className="chip bg-pine/15 !px-3 !py-1.5 text-emerald-300">
-                📅 {new Date(`${event.exchange_date}T00:00:00`).toLocaleDateString("es", { day: "numeric", month: "long" })}
-              </span>
-            )}
-          </div>
+          {(event.budget || event.exchange_date) && (
+            <div className="mt-4 flex flex-wrap justify-center gap-2 text-sm">
+              {event.budget && <span className="chip border border-line bg-white text-ink">💰 {event.budget}</span>}
+              {event.exchange_date && (
+                <span className="chip border border-line bg-white text-ink">
+                  📅 {new Date(`${event.exchange_date}T00:00:00`).toLocaleDateString("es", { day: "numeric", month: "long" })}
+                </span>
+              )}
+            </div>
+          )}
 
-          <p className="mt-6 text-sm text-white/55">
-            🤫 Shhh… Nadie más lo sabe, ni el organizador. Puedes volver a verlo cuando quieras con tu PIN.
-          </p>
-          <button className="btn-santa mt-5 w-full" onClick={onHide}>🙈 Ocultar y salir</button>
+          <p className="mt-6 text-sm text-muted">🤫 Nadie más lo sabe, ni el organizador. Puedes volver a verlo con tu PIN.</p>
+          <button className="btn-secondary mt-5 w-full" onClick={onHide}>Ocultar y salir</button>
         </div>
       </div>
-      <div className="glass mt-5 p-6">
+      <div className="card p-6">
         <WishlistEditor slug={slug} participantId={participantId} pin={pin} initial={data.me.wishlist} />
       </div>
     </div>
@@ -425,12 +446,12 @@ function WishlistEditor({ slug, participantId, pin, initial }: { slug: string; p
   const [text, setText] = useState(initial ?? "");
   const [state, setState] = useState<string>("idle");
   return (
-    <div className="text-left">
-      <label className="label" htmlFor="mywish">✏️ Mi lista de deseos (la verá quien me regale)</label>
+    <div>
+      <label className="label" htmlFor="mywish">Mi lista de deseos <span className="font-normal text-muted">(la verá quien me regale)</span></label>
       <textarea id="mywish" className="input min-h-20" value={text} onChange={(e) => { setText(e.target.value); setState("idle"); }} maxLength={1000} placeholder="¿Qué te gustaría recibir?" />
-      <div className="mt-2 flex items-center gap-3">
+      <div className="mt-3 flex items-center gap-3">
         <button
-          className="btn-pine !py-2 text-sm"
+          className="btn-green !py-2 text-sm"
           disabled={state === "saving"}
           onClick={async () => {
             setState("saving");
@@ -444,8 +465,8 @@ function WishlistEditor({ slug, participantId, pin, initial }: { slug: string; p
         >
           Guardar
         </button>
-        <span className="text-sm text-white/60">
-          {state === "saving" ? "Guardando…" : state === "saved" ? "✅ Guardado" : state !== "idle" ? state : ""}
+        <span className="text-sm text-muted">
+          {state === "saving" ? "Guardando…" : state === "saved" ? "✓ Guardado" : state !== "idle" ? state : ""}
         </span>
       </div>
     </div>

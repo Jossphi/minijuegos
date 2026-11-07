@@ -24,46 +24,46 @@ export default function AdminHome({ events }: { events: Ev[] }) {
   };
 
   return (
-    <div className="space-y-8">
-      <div className="flex flex-wrap items-center justify-between gap-4">
+    <div className="space-y-10">
+      <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="font-display text-5xl font-bold"><span className="text-shine">Taller del organizador</span></h1>
-          <p className="text-white/60">Crea y gestiona los sorteos de Amigo Secreto.</p>
+          <p className="eyebrow">Organizador</p>
+          <h1 className="font-display mt-1 text-3xl text-ink sm:text-4xl">Tus sorteos</h1>
         </div>
-        <button
-          className="btn-ghost"
-          onClick={async () => { await fetch("/api/admin/logout", { method: "POST" }); router.refresh(); }}
-        >
+        <button className="btn-ghost" onClick={async () => { await fetch("/api/admin/logout", { method: "POST" }); router.refresh(); }}>
           Cerrar sesión
         </button>
       </div>
 
       <section className="grid gap-4 sm:grid-cols-2">
-        {events.map((e) => (
-          <Link key={e.id} href={`/admin/${e.slug}`} className="glass block p-6 transition hover:-translate-y-0.5 hover:bg-white/10">
-            <div className="flex items-start justify-between gap-2">
-              <div className="text-xl font-semibold">{e.name}</div>
-              <span className={`chip ${e.is_active ? "bg-pine/20 text-emerald-300" : "bg-white/10 text-white/50"}`}>
-                {e.is_active ? "Activo" : "Oculto"}
-              </span>
-            </div>
-            <div className="mt-1 text-sm text-white/50">/amigo-secreto/{e.slug}</div>
-            <div className="mt-4 flex gap-4 text-sm text-white/75">
-              <span>👥 {e.teams} equipos</span>
-              <span>🎅 {e.people} personas</span>
-              <span>🎁 {e.drawn} ya sortearon</span>
-            </div>
-          </Link>
-        ))}
-        {!events.length && <div className="glass p-6 text-white/60 sm:col-span-2">Todavía no hay sorteos. ¡Crea el primero abajo! 👇</div>}
+        {events.map((e) => {
+          const pct = e.people ? Math.round((e.drawn / e.people) * 100) : 0;
+          return (
+            <Link key={e.id} href={`/admin/${e.slug}`} className="card block p-6 transition hover:-translate-y-0.5 hover:border-stone-300">
+              <div className="flex items-start justify-between gap-2">
+                <div className="text-lg font-bold text-ink">{e.name}</div>
+                <span className={`chip ${e.is_active ? "bg-pine-soft text-pine" : "bg-stone-100 text-muted"}`}>{e.is_active ? "Activo" : "Oculto"}</span>
+              </div>
+              <div className="mt-0.5 text-sm text-muted">/amigo-secreto/{e.slug}</div>
+              <div className="mt-5 flex items-baseline justify-between text-sm">
+                <span className="text-muted">{e.teams} equipos · {e.people} personas</span>
+                <span className="font-semibold text-ink">{e.drawn}/{e.people} sortearon</span>
+              </div>
+              <div className="mt-2 h-2 overflow-hidden rounded-full bg-stone-100">
+                <div className="h-full rounded-full bg-pine" style={{ width: `${pct}%` }} />
+              </div>
+            </Link>
+          );
+        })}
+        {!events.length && <div className="card p-6 text-muted sm:col-span-2">Todavía no hay sorteos. Crea el primero abajo.</div>}
       </section>
 
-      <form onSubmit={create} className="glass p-6 sm:p-8">
-        <h2 className="text-2xl font-semibold">➕ Nuevo Amigo Secreto</h2>
+      <form onSubmit={create} className="card p-6 sm:p-8">
+        <h2 className="text-xl font-bold text-ink">Nuevo Amigo Secreto</h2>
         <div className="mt-5 grid gap-4 sm:grid-cols-2">
           <div className="sm:col-span-2">
             <label className="label">Nombre del evento</label>
-            <input className="input" required placeholder="Navidad 2026 🎄" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+            <input className="input" required placeholder="Navidad 2026" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
           </div>
           <div>
             <label className="label">Presupuesto</label>
@@ -77,13 +77,13 @@ export default function AdminHome({ events }: { events: Ev[] }) {
             <label className="label">Mensaje para los participantes</label>
             <textarea className="input min-h-20" placeholder="¡Nos vemos en la cena navideña!" value={form.message} onChange={(e) => setForm({ ...form, message: e.target.value })} />
           </div>
-          <label className="flex items-center gap-3 text-sm sm:col-span-2">
-            <input type="checkbox" className="h-5 w-5 accent-[#ffc93c]" checked={withTeams} onChange={(e) => setWithTeams(e.target.checked)} />
-            Crear dos equipos para empezar (Rojo 🎅 y Verde 🎄)
+          <label className="flex cursor-pointer items-center gap-3 text-sm text-ink sm:col-span-2">
+            <input type="checkbox" className="h-4 w-4 accent-[#c8102e]" checked={withTeams} onChange={(e) => setWithTeams(e.target.checked)} />
+            Crear dos equipos para empezar (Rojo y Verde)
           </label>
         </div>
-        {error && <p className="mt-4 text-sm text-rose-300">{error}</p>}
-        <button className="btn-santa mt-6" disabled={busy}>Crear sorteo 🎁</button>
+        {error && <p className="mt-4 text-sm font-medium text-santa">{error}</p>}
+        <button className="btn-primary mt-6" disabled={busy}>Crear sorteo</button>
       </form>
     </div>
   );

@@ -14,7 +14,7 @@ export default async function AdminEventPage({ params }: { params: Promise<{ slu
   return (
     <>
       <TopBar back="/admin" backLabel="Panel" />
-      <main className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-6"><EventManager event={data.event} teams={data.teams} /></main>
+      <main className="mx-auto w-full max-w-5xl px-4 py-8 sm:px-6"><EventManager event={data.event} teams={data.teams} /></main>
       <Footer />
     </>
   );
