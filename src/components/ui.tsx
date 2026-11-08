@@ -52,25 +52,31 @@ export function Footer() {
 
 /** Indicador de pasos 1 · 2 · 3 */
 export function Steps({ steps, current }: { steps: string[]; current: number }) {
+  // Solo se muestra el nombre del paso actual: así cabe siempre dentro de la tarjeta, en celular y en computadora.
   return (
-    <ol className="flex items-center justify-center gap-1.5 text-xs font-semibold sm:gap-2 sm:text-sm">
-      {steps.map((s, i) => {
-        const done = i < current;
-        const active = i === current;
-        return (
-          <li key={s} className="flex items-center gap-1.5 sm:gap-2">
-            <span
-              className={`flex h-6 w-6 items-center justify-center rounded-full text-[11px] ${
-                active ? "bg-santa text-white" : done ? "bg-pine text-white" : "bg-stone-200 text-muted"
-              }`}
-            >
-              {done ? "✓" : i + 1}
-            </span>
-            <span className={`whitespace-nowrap ${active ? "text-ink" : "hidden text-muted sm:inline"}`}>{s}</span>
-            {i < steps.length - 1 && <span className="mx-0.5 h-px w-4 bg-line sm:mx-1 sm:w-8" />}
-          </li>
-        );
-      })}
-    </ol>
+    <div>
+      <ol className="flex w-full items-center" aria-label={`Paso ${current + 1} de ${steps.length}: ${steps[current]}`}>
+        {steps.map((s, i) => {
+          const done = i < current;
+          const active = i === current;
+          return (
+            <li key={s} className={`flex items-center ${i < steps.length - 1 ? "flex-1" : ""}`}>
+              <span
+                title={s}
+                className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
+                  active ? "bg-santa text-white ring-4 ring-santa/15" : done ? "bg-pine text-white" : "bg-stone-200 text-muted"
+                }`}
+              >
+                {done ? "✓" : i + 1}
+              </span>
+              {i < steps.length - 1 && <span className={`mx-2 h-0.5 flex-1 rounded-full ${done ? "bg-pine" : "bg-line"}`} />}
+            </li>
+          );
+        })}
+      </ol>
+      <p className="mt-2 text-center text-xs font-semibold text-muted">
+        Paso {current + 1} de {steps.length} · <span className="text-ink">{steps[current]}</span>
+      </p>
+    </div>
   );
 }
