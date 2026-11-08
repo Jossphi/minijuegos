@@ -1,7 +1,7 @@
 import type { PoolClient } from "pg";
 import { query, tx } from "./db";
 import { hashPin, openForGiver, PIN_LOGIN_REGEX, PIN_REGEX, sealForGiver, verifyPin } from "./crypto";
-import { generateAssignments, type DrawMode } from "./draw";
+import { DrawConfigError, generateAssignments, validateRules, type DrawMode } from "./draw";
 
 export class UserError extends Error {
   constructor(message: string, public status = 400) {
@@ -45,6 +45,7 @@ export type AdminTeam = {
   drawn_at: string | null;
   participants: { id: string; name: string; drawn: boolean; locked: boolean; attendance: Attendance }[];
   exclusions: { a_id: string; b_id: string }[];
+  forced: { giver_id: string; receiver_id: string }[];
 };
 
 export type DrawResult = {
@@ -247,6 +248,7 @@ async function drawInTx(c: PoolClient, team: TeamLock) {
   const people = await c.query<{ id: string }>(`select id from participants where team_id = $1`, [team.id]);
   if (people.rowCount! < 3) throw new UserError("Tu equipo aún no está listo para sortear. Avisa al organizador.");
   const ex = await c.query<{ a_id: string; b_id: string }>(`select a_id, b_id from exclusions where team_id = $1`, [team.id]);
+  const fp = await c.query<{ giver_id: string; receiver_id: string }>(`select giver_id, receiver_id from forced_pairs where team_id = $1`, [team.id]);
 
   let map: Map<string, string>;
   try {
@@ -254,6 +256,7 @@ async function drawInTx(c: PoolClient, team: TeamLock) {
       people.rows.map((p) => p.id),
       ex.rows.map((e) => [e.a_id, e.b_id]),
       team.draw_mode,
+      fp.rows.map((f) => [f.giver_id, f.receiver_id]),
     );
   } catch (e) {
     throw new UserError((e as Error).message);
@@ -299,7 +302,7 @@ export async function adminListEvents() {
 export async function adminGetEvent(slug: string) {
   const event = await getEventBySlug(slug);
   if (!event) return null;
-  const teams = await query<Omit<AdminTeam, "participants" | "exclusions">>(
+  const teams = await query<Omit<AdminTeam, "participants" | "exclusions" | "forced">>(
     `select id, name, color, draw_mode, drawn_at from teams where event_id = $1 order by created_at, name`,
     [event.id],
   );
@@ -313,12 +316,17 @@ export async function adminGetEvent(slug: string) {
     `select x.team_id, x.a_id, x.b_id from exclusions x join teams t on t.id = x.team_id where t.event_id = $1`,
     [event.id],
   );
+  const fp = await query<{ team_id: string; giver_id: string; receiver_id: string }>(
+    `select f.team_id, f.giver_id, f.receiver_id from forced_pairs f join teams t on t.id = f.team_id where t.event_id = $1`,
+    [event.id],
+  );
   const out: AdminTeam[] = teams.map((t) => ({
     ...t,
     participants: people
       .filter((p) => p.team_id === t.id)
       .map((p) => ({ id: p.id, name: p.name, drawn: p.drawn, locked: p.locked, attendance: p.attendance })),
     exclusions: ex.filter((e) => e.team_id === t.id).map(({ a_id, b_id }) => ({ a_id, b_id })),
+    forced: fp.filter((f) => f.team_id === t.id).map(({ giver_id, receiver_id }) => ({ giver_id, receiver_id })),
   }));
   return { event, teams: out };
 }
@@ -397,8 +405,36 @@ async function assertNotDrawn(teamId: string) {
     throw new UserError("Este equipo ya empezó a sortear. Para cambiar la lista, primero reinicia el sorteo del equipo.");
 }
 
+/** Comprueba que las reglas del equipo (con un posible cambio) sigan siendo posibles. */
+async function checkTeamRules(
+  teamId: string,
+  change: { mode?: DrawMode; addExclusion?: [string, string]; addForced?: [string, string] } = {},
+) {
+  const [t] = await query<{ draw_mode: DrawMode }>(`select draw_mode from teams where id = $1`, [teamId]);
+  const ids = (await query<{ id: string }>(`select id from participants where team_id = $1`, [teamId])).map((r) => r.id);
+  const ex = (await query<{ a_id: string; b_id: string }>(`select a_id, b_id from exclusions where team_id = $1`, [teamId])).map(
+    (e) => [e.a_id, e.b_id] as [string, string],
+  );
+  const fp = (await query<{ giver_id: string; receiver_id: string }>(`select giver_id, receiver_id from forced_pairs where team_id = $1`, [teamId])).map(
+    (f) => [f.giver_id, f.receiver_id] as [string, string],
+  );
+  if (change.addExclusion) ex.push(change.addExclusion);
+  if (change.addForced) fp.push(change.addForced);
+  const mode = change.mode ?? t.draw_mode;
+  try {
+    validateRules(ids, ex, fp, mode);
+    if (ids.length >= 3) generateAssignments(ids, ex, mode, fp); // ¿existe al menos un sorteo posible?
+  } catch (e) {
+    if (e instanceof DrawConfigError) throw new UserError(e.message);
+    throw e;
+  }
+}
+
 export async function adminUpdateTeam(teamId: string, input: Partial<{ name: string; color: string; draw_mode: DrawMode }>) {
-  if (input.draw_mode !== undefined) await assertNotDrawn(teamId);
+  if (input.draw_mode !== undefined) {
+    await assertNotDrawn(teamId);
+    await checkTeamRules(teamId, { mode: input.draw_mode === "free" ? "free" : "cycle" });
+  }
   await query(
     `update teams set name = coalesce($2, name), color = coalesce($3, color), draw_mode = coalesce($4, draw_mode) where id = $1`,
     [
@@ -457,7 +493,23 @@ export async function adminAddExclusion(teamId: string, a: string, b: string) {
   const [x, y] = a < b ? [a, b] : [b, a];
   const ok = await query(`select 1 from participants where team_id = $1 and id = any($2::uuid[])`, [teamId, [x, y]]);
   if (ok.length !== 2) throw new UserError("Ambas personas deben ser del mismo equipo");
+  await checkTeamRules(teamId, { addExclusion: [x, y] });
   await query(`insert into exclusions (team_id, a_id, b_id) values ($1,$2,$3) on conflict do nothing`, [teamId, x, y]);
+}
+
+/** Pareja obligatoria: `giver` SIEMPRE le regalará a `receiver`. */
+export async function adminAddForced(teamId: string, giver: string, receiver: string) {
+  if (giver === receiver) throw new UserError("Elige dos personas distintas");
+  await assertNotDrawn(teamId);
+  const ok = await query(`select 1 from participants where team_id = $1 and id = any($2::uuid[])`, [teamId, [giver, receiver]]);
+  if (ok.length !== 2) throw new UserError("Ambas personas deben ser del mismo equipo");
+  await checkTeamRules(teamId, { addForced: [giver, receiver] });
+  await query(`insert into forced_pairs (team_id, giver_id, receiver_id) values ($1,$2,$3)`, [teamId, giver, receiver]);
+}
+
+export async function adminRemoveForced(teamId: string, giver: string) {
+  await assertNotDrawn(teamId);
+  await query(`delete from forced_pairs where team_id = $1 and giver_id = $2`, [teamId, giver]);
 }
 
 export async function adminRemoveExclusion(teamId: string, a: string, b: string) {

@@ -25,6 +25,12 @@ async function main() {
   const d = pub.teams.find((t) => t.name === "Duendes")!;
   await S.adminAddExclusion(r.id, r.participants[0].id, r.participants[1].id);
 
+  // Pareja obligatoria (Renos[2] → Renos[3]) y validación de contradicciones
+  await S.adminAddForced(r.id, r.participants[2].id, r.participants[3].id);
+  await expectError(() => S.adminAddForced(r.id, r.participants[3].id, r.participants[2].id), 400, "mutua en cadena rechazada");
+  await expectError(() => S.adminAddExclusion(r.id, r.participants[2].id, r.participants[3].id), 400, "exclusión contra obligatoria");
+  console.log("✔ reglas de parejas validadas al crearlas");
+
   // Asistencia: sin responder no se puede sortear; solo se responde una vez
   await expectError(() => S.drawForParticipant(SLUG, r.participants[0].id, "123456"), 409, "sortear sin confirmar asistencia");
   await expectError(() => S.answerAttendance(SLUG, r.participants[0].id, "quizas"), 400, "respuesta inválida");
@@ -55,6 +61,7 @@ async function main() {
     assert(new Set(map.values()).size === names.length, "cada uno recibe exactamente un regalo");
     assert(names.every((n) => names.includes(map.get(n)!)), "solo dentro del mismo equipo");
     if (team.name === "Renos") {
+      assert(map.get(team.participants[2].name) === team.participants[3].name, "respeta pareja obligatoria");
       const [a, b] = [team.participants[0].name, team.participants[1].name];
       assert(map.get(a) !== b && map.get(b) !== a, "respeta exclusión");
       let cur = names[0], steps = 0;

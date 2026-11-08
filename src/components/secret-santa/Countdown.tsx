@@ -13,8 +13,8 @@ export default function Countdown({ date }: { date: string }) {
   const label = raw.charAt(0).toUpperCase() + raw.slice(1);
   const days = now === null ? null : Math.ceil((target.getTime() - now) / 86_400_000);
   return (
-    <span className="chip border border-line bg-white !px-3 !py-1.5 !text-sm text-ink">
-      📅 {label}
+    <span className="chip flex-wrap justify-center border border-line bg-white !px-3 !py-1.5 text-center !text-sm text-ink">
+      <span>📅 {label}</span>
       {days !== null && days > 0 && <span className="font-bold text-pine">· faltan {days} día{days === 1 ? "" : "s"}</span>}
       {days === 0 && <span className="font-bold text-santa">· ¡es hoy!</span>}
     </span>

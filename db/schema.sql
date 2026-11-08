@@ -75,6 +75,15 @@ alter table events add column if not exists draw_open boolean not null default t
 alter table participants add column if not exists attendance text check (attendance in ('yes', 'no'));
 alter table participants add column if not exists attendance_at timestamptz;
 
+-- v4: parejas obligatorias (giver SIEMPRE le regala a receiver)
+create table if not exists forced_pairs (
+  team_id      uuid not null references teams(id) on delete cascade,
+  giver_id     uuid not null unique references participants(id) on delete cascade,
+  receiver_id  uuid not null unique references participants(id) on delete cascade,
+  primary key (giver_id),
+  check (giver_id <> receiver_id)
+);
+
 create index if not exists teams_event_idx on teams(event_id);
 create index if not exists participants_team_idx on participants(team_id);
 create index if not exists assignments_team_idx on assignments(team_id);

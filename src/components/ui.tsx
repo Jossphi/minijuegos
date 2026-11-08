@@ -53,12 +53,12 @@ export function Footer() {
 /** Indicador de pasos 1 · 2 · 3 */
 export function Steps({ steps, current }: { steps: string[]; current: number }) {
   return (
-    <ol className="flex items-center justify-center gap-2 text-xs font-semibold sm:text-sm">
+    <ol className="flex items-center justify-center gap-1.5 text-xs font-semibold sm:gap-2 sm:text-sm">
       {steps.map((s, i) => {
         const done = i < current;
         const active = i === current;
         return (
-          <li key={s} className="flex items-center gap-2">
+          <li key={s} className="flex items-center gap-1.5 sm:gap-2">
             <span
               className={`flex h-6 w-6 items-center justify-center rounded-full text-[11px] ${
                 active ? "bg-santa text-white" : done ? "bg-pine text-white" : "bg-stone-200 text-muted"
@@ -67,7 +67,7 @@ export function Steps({ steps, current }: { steps: string[]; current: number }) 
               {done ? "✓" : i + 1}
             </span>
             <span className={`whitespace-nowrap ${active ? "text-ink" : "hidden text-muted sm:inline"}`}>{s}</span>
-            {i < steps.length - 1 && <span className="mx-1 h-px w-6 bg-line sm:w-8" />}
+            {i < steps.length - 1 && <span className="mx-0.5 h-px w-4 bg-line sm:mx-1 sm:w-8" />}
           </li>
         );
       })}

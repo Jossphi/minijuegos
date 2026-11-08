@@ -12,6 +12,7 @@ type P = { id: string; name: string; drawn: boolean; locked: boolean; attendance
 type Team = {
   id: string; name: string; color: string; draw_mode: "cycle" | "free";
   drawn_at: string | null; participants: P[]; exclusions: { a_id: string; b_id: string }[];
+  forced: { giver_id: string; receiver_id: string }[];
 };
 
 export default function EventManager({ event, teams }: { event: Event; teams: Team[] }) {
@@ -182,6 +183,8 @@ function TeamPanel({ team }: { team: Team }) {
   const [names, setNames] = useState("");
   const [exA, setExA] = useState("");
   const [exB, setExB] = useState("");
+  const [fA, setFA] = useState("");
+  const [fB, setFB] = useState("");
   const [editing, setEditing] = useState(false);
   const [tName, setTName] = useState(team.name);
 
@@ -329,9 +332,52 @@ function TeamPanel({ team }: { team: Team }) {
           </div>
         </div>
 
-        <div>
-          <h3 className="text-sm font-semibold text-ink">No pueden tocarse entre sí</h3>
-          <p className="mb-2 text-xs text-muted">Útil para parejas o para quienes ya se regalaron el año pasado.</p>
+        <div className="rounded-xl border border-line bg-paper/60 p-4">
+          <h3 className="text-sm font-bold text-ink">Reglas de parejas</h3>
+          <p className="mt-0.5 text-xs text-muted">Se aplican al generar el sorteo del equipo. Solo se pueden cambiar antes de que alguien sortee.</p>
+
+          {/* Pareja obligatoria */}
+          <h4 className="mt-4 text-sm font-semibold text-ink">💝 Tiene que regalarle a…</h4>
+          <p className="mb-2 text-xs text-muted">
+            La primera persona <b>siempre</b> le regalará a la segunda. Ojo: tú sabrás a quién le toca esa persona.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {team.forced.map((f) => (
+              <span key={f.giver_id} className="chip bg-pine-soft text-pine">
+                {byId.get(f.giver_id)} → {byId.get(f.receiver_id)}
+                {!drawn && (
+                  <button className="ml-1 cursor-pointer opacity-70 hover:opacity-100" onClick={() => run("removeForced", { teamId: team.id, giver: f.giver_id })} aria-label="Quitar">
+                    ✕
+                  </button>
+                )}
+              </span>
+            ))}
+            {!team.forced.length && <span className="text-sm text-muted">Ninguna</span>}
+          </div>
+          {!drawn && total >= 2 && (
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <select className="input !w-auto min-w-0 flex-1 !py-2 text-sm" value={fA} onChange={(e) => setFA(e.target.value)} aria-label="Quien regala">
+                <option value="">Quien regala…</option>
+                {team.participants.filter((p) => !team.forced.some((f) => f.giver_id === p.id)).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+              <span className="text-muted">→</span>
+              <select className="input !w-auto min-w-0 flex-1 !py-2 text-sm" value={fB} onChange={(e) => setFB(e.target.value)} aria-label="A quien le regala">
+                <option value="">…le regala a</option>
+                {team.participants.filter((p) => p.id !== fA && !team.forced.some((f) => f.receiver_id === p.id)).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+              <button
+                className="btn-secondary !py-2 text-sm"
+                disabled={!fA || !fB || busy}
+                onClick={async () => { await run("addForced", { teamId: team.id, giver: fA, receiver: fB }); setFA(""); setFB(""); }}
+              >
+                Añadir
+              </button>
+            </div>
+          )}
+
+          {/* Exclusión */}
+          <h4 className="mt-5 text-sm font-semibold text-ink">🚫 No pueden tocarse entre sí</h4>
+          <p className="mb-2 text-xs text-muted">Ninguna de las dos le regalará a la otra. Útil para parejas o para quienes ya se regalaron el año pasado.</p>
           <div className="flex flex-wrap gap-2">
             {team.exclusions.map((x) => (
               <span key={x.a_id + x.b_id} className="chip bg-stone-100 text-ink">

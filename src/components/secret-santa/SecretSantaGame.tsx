@@ -259,21 +259,42 @@ function Search({ people, onPick }: { people: Person[]; onPick: (p: Person) => v
 
 // ───────────────────────── Paso 2: PIN + sortear ─────────────────────────
 
+/** PIN en 6 casillas (una por número). Un input real invisible encima recibe lo que se escribe. */
 function PinInput({ value, onChange, autoFocus }: { value: string; onChange: (v: string) => void; autoFocus?: boolean }) {
+  const [focused, setFocused] = useState(false);
   return (
-    <input
-      className="input mx-auto block max-w-[16rem] text-center text-2xl font-bold tracking-[0.5em]"
-      type="password"
-      inputMode="numeric"
-      pattern="\d{4,6}"
-      maxLength={6}
-      autoComplete="off"
-      placeholder="••••••"
-      autoFocus={autoFocus}
-      value={value}
-      onChange={(e) => onChange(e.target.value.replace(/\D/g, "").slice(0, 6))}
-      aria-label="PIN"
-    />
+    <div className="relative mx-auto w-full max-w-xs">
+      <div className="flex justify-center gap-2" aria-hidden>
+        {Array.from({ length: 6 }, (_, i) => {
+          const filled = i < value.length;
+          const active = focused && i === Math.min(value.length, 5);
+          return (
+            <div
+              key={i}
+              className={`flex aspect-[4/5] min-w-0 max-w-12 flex-1 items-center justify-center rounded-xl border-2 bg-white text-2xl font-bold transition ${
+                active ? "border-santa ring-4 ring-santa/10" : filled ? "border-stone-300" : "border-line"
+              }`}
+            >
+              {filled ? <span className="h-3 w-3 rounded-full bg-ink" /> : null}
+            </div>
+          );
+        })}
+      </div>
+      <input
+        className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+        type="text"
+        inputMode="numeric"
+        pattern="\d{4,6}"
+        maxLength={6}
+        autoComplete="one-time-code"
+        autoFocus={autoFocus}
+        value={value}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
+        onChange={(e) => onChange(e.target.value.replace(/\D/g, "").slice(0, 6))}
+        aria-label="PIN"
+      />
+    </div>
   );
 }
 
@@ -339,7 +360,7 @@ function DrawForm({
 
       <div className="mt-6">
         <PinInput value={pin} onChange={setPin} autoFocus />
-        <p className="mt-2 text-center text-xs text-muted">{pin.length}/6</p>
+        <p className="mt-2 text-center text-xs text-muted">{pin.length} de 6 números</p>
       </div>
 
       {showWish ? (
