@@ -80,9 +80,9 @@ export default function SecretSantaGame({ slug, initialTeams, event }: { slug: s
           people={people.map(state)}
           onPick={(p) =>
             setStep(
-              p.drawn ? { k: "login", p }
+              !p.answered ? { k: "attend", p }
+              : p.drawn ? { k: "login", p }
               : p.declined ? { k: "declined", p }
-              : !p.answered ? { k: "attend", p }
               : !event.draw_open ? { k: "waitDraw", p }
               : { k: "draw", p },
             )
@@ -98,10 +98,13 @@ export default function SecretSantaGame({ slug, initialTeams, event }: { slug: s
           onBack={exit}
           onAnswer={(answer) => {
             patch(step.p.id, { answered: true, declined: answer === "no" });
+            // Quien ya sorteó antes de que existiera la pregunta: tras responder, sigue a ver su resultado.
+            if (step.p.drawn) return setStep({ k: "login", p: step.p });
             setStep(answer === "no" ? { k: "declined", p: step.p } : event.draw_open ? { k: "draw", p: step.p } : { k: "waitDraw", p: step.p });
           }}
           onAlreadyAnswered={() => {
             patch(step.p.id, { answered: true });
+            if (step.p.drawn) return setStep({ k: "login", p: step.p });
             setStep(event.draw_open ? { k: "draw", p: step.p } : { k: "waitDraw", p: step.p });
           }}
         />
