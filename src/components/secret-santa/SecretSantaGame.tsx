@@ -4,13 +4,17 @@ import { useMemo, useState } from "react";
 import { Steps, teamStyle } from "@/components/ui";
 import SlotReveal from "./SlotReveal";
 
-type Team = { id: string; name: string; color: string; participants: { id: string; name: string; drawn: boolean }[] };
-type Person = { id: string; name: string; drawn: boolean; team: { id: string; name: string; color: string } };
-type EventInfo = { name: string; budget: string | null; exchange_date: string | null };
+type PersonState = { drawn: boolean; answered: boolean; declined: boolean };
+type Team = { id: string; name: string; color: string; participants: ({ id: string; name: string } & PersonState)[] };
+type Person = { id: string; name: string; team: { id: string; name: string; color: string } } & PersonState;
+type EventInfo = { name: string; budget: string | null; exchange_date: string | null; draw_open: boolean };
 type Result = { me: { name: string; wishlist: string | null }; receiver: { name: string; wishlist: string | null } };
 
 type Step =
   | { k: "search" }
+  | { k: "attend"; p: Person }
+  | { k: "declined"; p: Person }
+  | { k: "waitDraw"; p: Person }
   | { k: "draw"; p: Person }
   | { k: "login"; p: Person }
   | { k: "gift"; p: Person; data: Result }
@@ -26,6 +30,13 @@ async function api<T>(url: string, payload: unknown): Promise<T> {
   const json = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(json.error ?? "Algo salió mal");
   return json as T;
+}
+
+const DRAW_STEPS = ["Tu nombre", "Asistencia", "Crea un PIN", "¡Sortea!"];
+
+function eventDateLabel(date: string | null) {
+  if (!date) return "el día del compartir";
+  return "el " + new Date(`${date}T00:00:00`).toLocaleDateString("es", { weekday: "long", day: "numeric", month: "long" });
 }
 
 const normalize = (s: string) =>
@@ -50,7 +61,9 @@ export default function SecretSantaGame({ slug, initialTeams, event }: { slug: s
         .sort((a, b) => a.name.localeCompare(b.name, "es")),
     [initialTeams],
   );
-  const [drawnIds, setDrawnIds] = useState(() => new Set(people.filter((p) => p.drawn).map((p) => p.id)));
+  const [overrides, setOverrides] = useState<Record<string, Partial<PersonState>>>({});
+  const state = (p: Person): Person => ({ ...p, ...overrides[p.id] });
+  const patch = (id: string, s: Partial<PersonState>) => setOverrides((o) => ({ ...o, [id]: { ...o[id], ...s } }));
   const [step, setStep] = useState<Step>({ k: "search" });
   const [pin, setPin] = useState("");
 
@@ -64,10 +77,38 @@ export default function SecretSantaGame({ slug, initialTeams, event }: { slug: s
     <div className="mt-8">
       {step.k === "search" && (
         <Search
-          people={people.map((p) => ({ ...p, drawn: drawnIds.has(p.id) }))}
-          onPick={(p) => setStep(drawnIds.has(p.id) ? { k: "login", p } : { k: "draw", p })}
+          people={people.map(state)}
+          onPick={(p) =>
+            setStep(
+              p.drawn ? { k: "login", p }
+              : p.declined ? { k: "declined", p }
+              : !p.answered ? { k: "attend", p }
+              : !event.draw_open ? { k: "waitDraw", p }
+              : { k: "draw", p },
+            )
+          }
         />
       )}
+
+      {step.k === "attend" && (
+        <AttendanceForm
+          slug={slug}
+          p={step.p}
+          event={event}
+          onBack={exit}
+          onAnswer={(answer) => {
+            patch(step.p.id, { answered: true, declined: answer === "no" });
+            setStep(answer === "no" ? { k: "declined", p: step.p } : event.draw_open ? { k: "draw", p: step.p } : { k: "waitDraw", p: step.p });
+          }}
+          onAlreadyAnswered={() => {
+            patch(step.p.id, { answered: true });
+            setStep(event.draw_open ? { k: "draw", p: step.p } : { k: "waitDraw", p: step.p });
+          }}
+        />
+      )}
+
+      {step.k === "declined" && <Declined p={step.p} onBack={exit} />}
+      {step.k === "waitDraw" && <WaitDraw p={step.p} onBack={exit} />}
 
       {step.k === "draw" && (
         <DrawForm
@@ -76,13 +117,14 @@ export default function SecretSantaGame({ slug, initialTeams, event }: { slug: s
           onBack={exit}
           onDone={(data, newPin) => {
             setPin(newPin);
-            setDrawnIds((s) => new Set(s).add(step.p.id));
+            patch(step.p.id, { drawn: true });
             setStep({ k: "gift", p: step.p, data });
           }}
           onAlreadyDrawn={() => {
-            setDrawnIds((s) => new Set(s).add(step.p.id));
+            patch(step.p.id, { drawn: true });
             setStep({ k: "login", p: step.p });
           }}
+          onNeedsAttendance={() => setStep({ k: "attend", p: step.p })}
         />
       )}
 
@@ -151,7 +193,7 @@ function Search({ people, onPick }: { people: Person[]; onPick: (p: Person) => v
       </div>
 
       <div className="mt-6">
-        {viewing ? <Steps steps={["Tu nombre", "Tu PIN"]} current={0} /> : <Steps steps={["Tu nombre", "Crea un PIN", "¡Sortea!"]} current={0} />}
+        {viewing ? <Steps steps={["Tu nombre", "Tu PIN"]} current={0} /> : <Steps steps={DRAW_STEPS} current={0} />}
       </div>
 
       <label htmlFor="name" className="label mt-6">
@@ -186,7 +228,7 @@ function Search({ people, onPick }: { people: Person[]; onPick: (p: Person) => v
                     </span>
                   </span>
                   <span className={`text-sm font-semibold ${p.drawn ? "text-gold" : "text-santa"}`}>
-                    {p.drawn ? "Ver mi amigo →" : viewing ? "Aún no sorteas · Sortear →" : "Soy yo →"}
+                    {p.drawn ? "Ver mi amigo →" : p.declined ? "No asistirá" : viewing ? "Aún no sorteas · Sortear →" : "Soy yo →"}
                   </span>
                 </button>
               </li>
@@ -247,13 +289,14 @@ function PersonHeader({ p, title, subtitle }: { p: Person; title: string; subtit
 }
 
 function DrawForm({
-  slug, p, onBack, onDone, onAlreadyDrawn,
+  slug, p, onBack, onDone, onAlreadyDrawn, onNeedsAttendance,
 }: {
   slug: string;
   p: Person;
   onBack: () => void;
   onDone: (data: Result, pin: string) => void;
   onAlreadyDrawn: () => void;
+  onNeedsAttendance: () => void;
 }) {
   const [pin, setPin] = useState("");
   const [wish, setWish] = useState("");
@@ -272,6 +315,8 @@ function DrawForm({
     } catch (e) {
       const msg = (e as Error).message;
       if (msg.includes("Ya sorteaste")) return onAlreadyDrawn();
+      if (msg.includes("confirma tu asistencia")) return onNeedsAttendance();
+      if (msg.includes("aún no está abierto")) return onNeedsAttendance();
       setErr(msg);
     } finally {
       setBusy(false);
@@ -280,7 +325,7 @@ function DrawForm({
 
   return (
     <form onSubmit={submit} className="card animate-pop-in p-6 sm:p-8">
-      <Steps steps={["Tu nombre", "Crea un PIN", "¡Sortea!"]} current={1} />
+      <Steps steps={DRAW_STEPS} current={2} />
       <div className="mt-6">
         <PersonHeader
           p={p}
@@ -319,6 +364,104 @@ function DrawForm({
         </button>
       </p>
     </form>
+  );
+}
+
+function AttendanceForm({
+  slug, p, event, onBack, onAnswer, onAlreadyAnswered,
+}: {
+  slug: string;
+  p: Person;
+  event: EventInfo;
+  onBack: () => void;
+  onAnswer: (answer: "yes" | "no") => void;
+  onAlreadyAnswered: () => void;
+}) {
+  const [committed, setCommitted] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const when = eventDateLabel(event.exchange_date);
+
+  const send = async (answer: "yes" | "no") => {
+    if (answer === "no" && !window.confirm(`¿Seguro que NO podrás asistir ${when}?\n\nNo participarás en el sorteo y no podrás cambiar tu respuesta tú mismo.`)) return;
+    setErr("");
+    setBusy(true);
+    try {
+      await api(`/api/amigo-secreto/${slug}/attendance`, { participantId: p.id, answer });
+      onAnswer(answer);
+    } catch (e) {
+      const msg = (e as Error).message;
+      if (msg.includes("Ya respondiste")) return onAlreadyAnswered();
+      setErr(msg);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="card animate-pop-in p-6 sm:p-8">
+      <Steps steps={DRAW_STEPS} current={1} />
+      <div className="mt-6">
+        <PersonHeader
+          p={p}
+          title={`Hola, ${p.name}`}
+          subtitle={<>¿Confirmas tu participación y asistencia al <b className="text-ink">compartir navideño</b> {when}?</>}
+        />
+      </div>
+
+      <div className="mt-6 rounded-xl border border-amber-200 bg-gold-soft p-4 text-sm text-amber-900">
+        <p className="font-bold">⚠️ Esta confirmación es obligatoria y solo se responde una vez.</p>
+        <p className="mt-1">
+          Si confirmas, tu equipo contará contigo: le regalarás a una persona y otra persona te regalará a ti. Por respeto a
+          todos, responde con sinceridad.
+        </p>
+      </div>
+
+      <label className="mt-5 flex cursor-pointer items-start gap-3 rounded-xl border border-line p-4 text-sm text-ink transition hover:bg-paper">
+        <input type="checkbox" className="mt-0.5 h-5 w-5 shrink-0 accent-[#15803d]" checked={committed} onChange={(e) => setCommitted(e.target.checked)} />
+        <span>Me comprometo a asistir {when} y a llevar mi regalo.</span>
+      </label>
+
+      {err && <p className="mt-4 rounded-xl bg-santa-soft p-3 text-center text-sm font-medium text-santa">{err}</p>}
+
+      <button className="btn-green mt-5 w-full !py-4 text-lg" disabled={busy || !committed} onClick={() => send("yes")}>
+        ✓ Sí, confirmo mi asistencia
+      </button>
+      <button className="btn-secondary mt-3 w-full" disabled={busy} onClick={() => send("no")}>
+        No podré asistir
+      </button>
+      <p className="mt-3 text-center">
+        <button type="button" onClick={onBack} className="cursor-pointer text-sm text-muted hover:text-ink">
+          ← No soy {p.name}
+        </button>
+      </p>
+    </div>
+  );
+}
+
+function Declined({ p, onBack }: { p: Person; onBack: () => void }) {
+  return (
+    <div className="card animate-pop-in p-8 text-center">
+      <div className="text-4xl">💚</div>
+      <h2 className="mt-3 text-2xl font-bold text-ink">Gracias por avisar, {p.name}</h2>
+      <p className="mx-auto mt-2 max-w-sm text-muted">
+        Indicaste que no podrás asistir, así que no participas en este sorteo. Si cambias de idea, habla con el organizador.
+      </p>
+      <button className="btn-secondary mt-6" onClick={onBack}>Volver</button>
+    </div>
+  );
+}
+
+function WaitDraw({ p, onBack }: { p: Person; onBack: () => void }) {
+  return (
+    <div className="card animate-pop-in p-8 text-center">
+      <div className="text-4xl">✅</div>
+      <h2 className="mt-3 text-2xl font-bold text-ink">¡Asistencia confirmada, {p.name}!</h2>
+      <p className="mx-auto mt-2 max-w-sm text-muted">
+        El sorteo todavía no está abierto. Cuando el organizador lo abra, entra de nuevo con tu nombre para sortear a tu amigo secreto.
+      </p>
+      <button className="btn-secondary mt-6" onClick={onBack}>Volver</button>
+    </div>
   );
 }
 

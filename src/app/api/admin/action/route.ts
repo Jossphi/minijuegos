@@ -33,6 +33,8 @@ export async function POST(req: Request) {
         return S.adminRemoveParticipant(str(a.participantId));
       case "resetParticipant":
         return S.adminResetParticipant(str(a.participantId));
+      case "resetAttendance":
+        return S.adminResetAttendance(str(a.participantId));
       case "unlockParticipant":
         return S.adminUnlockParticipant(str(a.participantId));
       case "addExclusion":

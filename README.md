@@ -18,6 +18,8 @@ Con su nombre + PIN pueden volver a verlo cuando quieran. Opcionalmente dejan un
 - Crea el evento (presupuesto, fecha con cuenta regresiva, mensaje) y los equipos.
 - Pega los nombres de cada equipo (uno por línea).
 - Ve el contador **"X de N ya tienen amigo secreto"** y el estado de cada persona, nunca a quién le tocó.
+- ✅ **Confirmación de asistencia** obligatoria (una sola vez) con resumen Confirmados / No asistirán / Sin responder.
+- 🔒 **Abrir / cerrar el sorteo**: con el sorteo cerrado solo se confirma asistencia.
 - 🔑 Restablecer PIN (a la persona le sale el mismo amigo), 🔓 desbloquear, 🔄 reiniciar el sorteo de un equipo y 🧹 **limpiar todos los sorteos** del evento (la lista de participantes se mantiene).
 - Opciones por equipo: modo **Cadena** (un solo círculo, sin regalos mutuos) o **Libre**, y **exclusiones** (parejas que no pueden tocarse).
 

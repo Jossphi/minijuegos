@@ -6,9 +6,9 @@ import { useAdminAction } from "./useAdmin";
 
 type Event = {
   id: string; slug: string; name: string; budget: string | null;
-  exchange_date: string | null; message: string | null; is_active: boolean;
+  exchange_date: string | null; message: string | null; is_active: boolean; draw_open: boolean;
 };
-type P = { id: string; name: string; drawn: boolean; locked: boolean };
+type P = { id: string; name: string; drawn: boolean; locked: boolean; attendance: "yes" | "no" | null };
 type Team = {
   id: string; name: string; color: string; draw_mode: "cycle" | "free";
   drawn_at: string | null; participants: P[]; exclusions: { a_id: string; b_id: string }[];
@@ -18,6 +18,10 @@ export default function EventManager({ event, teams }: { event: Event; teams: Te
   const total = teams.reduce((n, t) => n + t.participants.length, 0);
   const drawn = teams.reduce((n, t) => n + t.participants.filter((p) => p.drawn).length, 0);
   const pct = total ? Math.round((drawn / total) * 100) : 0;
+  const all = teams.flatMap((t) => t.participants);
+  const yes = all.filter((p) => p.attendance === "yes").length;
+  const no = all.filter((p) => p.attendance === "no").length;
+  const pending = all.length - yes - no;
 
   return (
     <div className="space-y-6">
@@ -25,6 +29,33 @@ export default function EventManager({ event, teams }: { event: Event; teams: Te
         <p className="eyebrow">Gestionar sorteo</p>
         <h1 className="font-display mt-1 text-3xl text-ink sm:text-4xl">{event.name}</h1>
       </div>
+
+      <DrawToggle event={event} />
+
+      {/* Asistencia */}
+      <section className="card p-6">
+        <div className="text-sm font-medium text-muted">Confirmación de asistencia al compartir</div>
+        <div className="mt-3 grid grid-cols-3 gap-3">
+          <div className="rounded-xl bg-pine-soft p-4">
+            <div className="text-3xl font-extrabold text-pine">{yes}</div>
+            <div className="text-xs font-semibold text-pine">Confirmados</div>
+          </div>
+          <div className="rounded-xl bg-santa-soft p-4">
+            <div className="text-3xl font-extrabold text-santa">{no}</div>
+            <div className="text-xs font-semibold text-santa">No asistirán</div>
+          </div>
+          <div className="rounded-xl bg-stone-100 p-4">
+            <div className="text-3xl font-extrabold text-ink">{pending}</div>
+            <div className="text-xs font-semibold text-muted">Sin responder</div>
+          </div>
+        </div>
+        {no > 0 && (
+          <p className="mt-4 rounded-xl border border-line px-4 py-3 text-xs text-muted">
+            Quienes respondieron “no asistiré” no pueden sortear. Si su equipo aún no empezó a sortear, quítalos de la lista para
+            que nadie les regale. Si ya empezó, usa “Reiniciar este equipo”, quítalos y vuelvan a sortear.
+          </p>
+        )}
+      </section>
 
       {/* Progreso */}
       <section className="card p-6">
@@ -59,6 +90,42 @@ export default function EventManager({ event, teams }: { event: Event; teams: Te
 
       <EventSettings event={event} />
     </div>
+  );
+}
+
+function DrawToggle({ event }: { event: Event }) {
+  const { run, busy, error } = useAdminAction();
+  const open = event.draw_open;
+  return (
+    <section className={`card flex flex-col gap-4 p-5 sm:flex-row sm:items-center ${open ? "" : "!border-amber-300"}`}>
+      <div className="flex-1">
+        <div className="flex items-center gap-2 font-bold text-ink">
+          <span className={`h-2.5 w-2.5 rounded-full ${open ? "bg-pine" : "bg-amber-500"}`} />
+          {open ? "Sorteo abierto" : "Sorteo cerrado · solo confirmaciones"}
+        </div>
+        <p className="mt-1 text-sm text-muted">
+          {open
+            ? "Quienes confirman su asistencia pueden sortear de inmediato."
+            : "Los participantes solo confirman si asistirán. Cuando tengas la lista definitiva (quita a quienes no van), abre el sorteo."}
+        </p>
+        {error && <p className="mt-2 text-sm font-medium text-santa">{error}</p>}
+      </div>
+      <button
+        className={open ? "btn-secondary" : "btn-green"}
+        disabled={busy}
+        onClick={() =>
+          run(
+            "updateEvent",
+            { id: event.id, draw_open: !open },
+            open
+              ? "¿Cerrar el sorteo?\n\nLos participantes podrán confirmar su asistencia pero no sortear. Quienes ya sortearon siguen viendo su resultado."
+              : "¿Abrir el sorteo?\n\nQuienes confirmaron su asistencia podrán sortear desde ahora.",
+          )
+        }
+      >
+        {open ? "Cerrar sorteo" : "🎲 Abrir sorteo"}
+      </button>
+    </section>
   );
 }
 
@@ -174,12 +241,27 @@ function TeamPanel({ team }: { team: Team }) {
               <li key={p.id} className="flex flex-wrap items-center gap-2 px-3 py-2.5">
                 <span className="flex-1 text-sm font-medium text-ink">{p.name}</span>
                 {p.locked && <span className="chip bg-santa-soft text-santa">Bloqueado</span>}
-                {p.drawn ? (
-                  <span className="chip bg-pine-soft text-pine">✓ Ya tiene amigo secreto</span>
+                {p.attendance === "yes" ? (
+                  <span className="chip bg-pine-soft text-pine">Asistirá</span>
+                ) : p.attendance === "no" ? (
+                  <span className="chip bg-santa-soft text-santa">No asistirá</span>
                 ) : (
-                  <span className="chip bg-stone-100 text-muted">Pendiente</span>
+                  <span className="chip bg-stone-100 text-muted">Sin responder</span>
+                )}
+                {p.drawn ? (
+                  <span className="chip bg-pine-soft text-pine">✓ Sorteó</span>
+                ) : (
+                  <span className="chip bg-stone-100 text-muted">Sin sortear</span>
                 )}
                 <div className="flex gap-0.5">
+                  {p.attendance && !p.drawn && (
+                    <IconBtn
+                      title="Volver a preguntar asistencia"
+                      onClick={() => run("resetAttendance", { participantId: p.id }, `¿Borrar la respuesta de asistencia de ${p.name}?\n\nSe le volverá a preguntar la próxima vez que entre.`)}
+                    >
+                      ↺
+                    </IconBtn>
+                  )}
                   {p.locked && (
                     <IconBtn title="Desbloquear" onClick={() => run("unlockParticipant", { participantId: p.id })}>🔓</IconBtn>
                   )}

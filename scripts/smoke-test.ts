@@ -25,6 +25,21 @@ async function main() {
   const d = pub.teams.find((t) => t.name === "Duendes")!;
   await S.adminAddExclusion(r.id, r.participants[0].id, r.participants[1].id);
 
+  // Asistencia: sin responder no se puede sortear; solo se responde una vez
+  await expectError(() => S.drawForParticipant(SLUG, r.participants[0].id, "123456"), 409, "sortear sin confirmar asistencia");
+  await expectError(() => S.answerAttendance(SLUG, r.participants[0].id, "quizas"), 400, "respuesta inválida");
+  for (const team of [r, d]) for (const p of team.participants) await S.answerAttendance(SLUG, p.id, "yes");
+  await expectError(() => S.answerAttendance(SLUG, r.participants[0].id, "no"), 409, "responder dos veces");
+  const att = (await S.adminGetEvent(SLUG))!.teams.flatMap((t) => t.participants);
+  assert(att.every((p) => p.attendance === "yes"), "admin ve asistencia confirmada");
+  console.log("✔ confirmación de asistencia OK");
+
+  // Sorteo cerrado: se confirma asistencia pero no se puede sortear
+  await S.adminUpdateEvent(ev.id, { draw_open: false });
+  await expectError(() => S.drawForParticipant(SLUG, r.participants[0].id, "123456"), 423, "sorteo cerrado");
+  await S.adminUpdateEvent(ev.id, { draw_open: true });
+  console.log("✔ abrir/cerrar sorteo OK");
+
   // PIN inválido
   await expectError(() => S.drawForParticipant(SLUG, r.participants[0].id, "1234"), 400, "PIN de 4 rechazado al crear");
 
@@ -85,6 +100,11 @@ async function main() {
   const pub2 = (await S.getPublicEvent(SLUG))!;
   assert(pub2.teams.find((t) => t.id === r.id)!.participants.every((p) => !p.drawn), "equipo reiniciado");
   const p10 = pub2.teams.find((t) => t.id === r.id)!.participants.find((p) => p.name === "Reno 10")!;
+  // quien dice que no asistirá no puede sortear
+  await S.answerAttendance(SLUG, p10.id, "no");
+  await expectError(() => S.drawForParticipant(SLUG, p10.id, "111111"), 403, "no asistirá → no sortea");
+  await S.adminResetAttendance(p10.id);
+  await S.answerAttendance(SLUG, p10.id, "yes");
   assert((await S.drawForParticipant(SLUG, p10.id, "111111")).receiver.name, "sorteo tras reinicio");
   console.log("✔ lista fija y reinicio de equipo OK");
 

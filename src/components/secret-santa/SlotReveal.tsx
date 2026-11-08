@@ -5,11 +5,19 @@ const ITEM_H = 72;
 
 /** Ruleta vertical. El resultado ya viene decidido por el servidor; esto solo es el espectáculo. */
 export default function SlotReveal({ names, result, onDone }: { names: string[]; result: string; onDone: () => void }) {
+  // Carrete sin nombres repetidos seguidos, y sin el resultado justo encima o debajo de la ventana.
   const reel = useMemo(() => {
-    const pool = names.length ? names : [result];
+    const pool = [...new Set(names.length ? names : [result])];
+    const others = pool.filter((n) => n !== result);
+    const pick = (avoid: string[]) => {
+      const options = pool.filter((n) => !avoid.includes(n));
+      return options.length ? options[Math.floor(Math.random() * options.length)] : pool[0];
+    };
     const out: string[] = [];
-    for (let i = 0; i < 36; i++) out.push(pool[Math.floor(Math.random() * pool.length)]);
-    out.push(result, pool[0], pool[Math.min(1, pool.length - 1)]);
+    for (let i = 0; i < 36; i++) out.push(pick(i === 35 ? [out[i - 1], result] : [out[i - 1]]));
+    const after1 = others.length ? others[Math.floor(Math.random() * others.length)] : result;
+    const after2 = others.find((n) => n !== after1) ?? after1;
+    out.push(result, after1, after2);
     return out;
   }, [names, result]);
   const target = reel.length - 3;

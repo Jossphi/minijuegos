@@ -68,6 +68,13 @@ create table if not exists assignments (
 alter table participants add column if not exists pin_salt text;
 alter table participants add column if not exists pin_hash text;
 
+-- v3: el organizador puede abrir/cerrar el sorteo (con el sorteo cerrado solo se confirma asistencia)
+alter table events add column if not exists draw_open boolean not null default true;
+
+-- v3: confirmación de asistencia (se pregunta una sola vez)
+alter table participants add column if not exists attendance text check (attendance in ('yes', 'no'));
+alter table participants add column if not exists attendance_at timestamptz;
+
 create index if not exists teams_event_idx on teams(event_id);
 create index if not exists participants_team_idx on participants(team_id);
 create index if not exists assignments_team_idx on assignments(team_id);

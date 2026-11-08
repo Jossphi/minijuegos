@@ -25,14 +25,17 @@ export type EventRow = {
   exchange_date: string | null;
   message: string | null;
   is_active: boolean;
+  draw_open: boolean;
 };
 
 export type PublicTeam = {
   id: string;
   name: string;
   color: TeamColor;
-  participants: { id: string; name: string; drawn: boolean }[];
+  participants: { id: string; name: string; drawn: boolean; answered: boolean; declined: boolean }[];
 };
+
+export type Attendance = "yes" | "no" | null;
 
 export type AdminTeam = {
   id: string;
@@ -40,7 +43,7 @@ export type AdminTeam = {
   color: TeamColor;
   draw_mode: DrawMode;
   drawn_at: string | null;
-  participants: { id: string; name: string; drawn: boolean; locked: boolean }[];
+  participants: { id: string; name: string; drawn: boolean; locked: boolean; attendance: Attendance }[];
   exclusions: { a_id: string; b_id: string }[];
 };
 
@@ -102,15 +105,16 @@ export async function getPublicEvent(slug: string) {
     `select id, name, color from teams where event_id = $1 order by created_at, name`,
     [event.id],
   );
-  const people = await query<{ id: string; team_id: string; name: string; drawn: boolean }>(
-    `select p.id, p.team_id, p.name, p.claimed_at is not null as drawn
+  const people = await query<{ id: string; team_id: string; name: string; drawn: boolean; answered: boolean; declined: boolean }>(
+    `select p.id, p.team_id, p.name, p.claimed_at is not null as drawn, p.attendance is not null as answered,
+            coalesce(p.attendance = 'no', false) as declined
        from participants p join teams t on t.id = p.team_id
       where t.event_id = $1 order by p.name`,
     [event.id],
   );
   const out: PublicTeam[] = teams.map((t) => ({
     ...t,
-    participants: people.filter((p) => p.team_id === t.id).map(({ id, name, drawn }) => ({ id, name, drawn })),
+    participants: people.filter((p) => p.team_id === t.id).map(({ id, name, drawn, answered, declined }) => ({ id, name, drawn, answered, declined })),
   }));
   return { event, teams: out };
 }
@@ -124,14 +128,15 @@ type ParticipantFull = {
   pin_salt: string | null;
   pin_hash: string | null;
   claimed_at: string | null;
+  attendance: Attendance;
   wishlist: string | null;
   failed_attempts: number;
   locked_until: string | null;
 };
 
 async function loadParticipant(participantId: string, eventSlug: string) {
-  const [p] = await query<ParticipantFull & { event_active: boolean }>(
-    `select p.*, e.is_active as event_active
+  const [p] = await query<ParticipantFull & { event_active: boolean; draw_open: boolean }>(
+    `select p.*, e.is_active as event_active, e.draw_open
        from participants p join teams t on t.id = p.team_id join events e on e.id = t.event_id
       where p.id::text = $1 and e.slug = $2`,
     [participantId, eventSlug],
@@ -161,6 +166,10 @@ export async function drawForParticipant(eventSlug: string, participantId: strin
   if (!PIN_REGEX.test(pin)) throw new UserError("El PIN debe tener exactamente 6 números");
   const p = await loadParticipant(participantId, eventSlug);
   if (p.claimed_at) throw new UserError("Ya sorteaste. Escribe tu PIN para volver a ver a tu amigo secreto.", 409);
+  if (p.attendance === null) throw new UserError("Primero confirma tu asistencia.", 409);
+  if (!p.draw_open) throw new UserError("El sorteo aún no está abierto. El organizador avisará cuando puedas sortear.", 423);
+  if (p.attendance === "no")
+    throw new UserError("Indicaste que no podrás asistir, así que no participas en el sorteo. Si cambias de idea, avisa al organizador.", 403);
 
   const { salt, hash } = await hashPin(pin);
   await tx(async (c) => {
@@ -175,6 +184,18 @@ export async function drawForParticipant(eventSlug: string, participantId: strin
     if (!r.rowCount) throw new UserError("Ya sorteaste. Escribe tu PIN para volver a ver a tu amigo secreto.", 409);
   });
   return resultFor(p);
+}
+
+/** Confirmación de asistencia: se responde UNA sola vez. */
+export async function answerAttendance(eventSlug: string, participantId: string, answer: string) {
+  if (answer !== "yes" && answer !== "no") throw new UserError("Respuesta no válida");
+  const p = await loadParticipant(participantId, eventSlug);
+  const r = await query(
+    `update participants set attendance = $2, attendance_at = now() where id = $1 and attendance is null returning id`,
+    [p.id, answer],
+  );
+  if (!r.length) throw new UserError("Ya respondiste esta pregunta. Si necesitas cambiarla, avisa al organizador.", 409);
+  return { attendance: answer };
 }
 
 async function checkPin(p: ParticipantFull, pin: string) {
@@ -282,9 +303,9 @@ export async function adminGetEvent(slug: string) {
     `select id, name, color, draw_mode, drawn_at from teams where event_id = $1 order by created_at, name`,
     [event.id],
   );
-  const people = await query<{ id: string; team_id: string; name: string; drawn: boolean; locked: boolean }>(
+  const people = await query<{ id: string; team_id: string; name: string; drawn: boolean; locked: boolean; attendance: Attendance }>(
     `select p.id, p.team_id, p.name, p.claimed_at is not null as drawn,
-            coalesce(p.locked_until > now(), false) as locked
+            coalesce(p.locked_until > now(), false) as locked, p.attendance
        from participants p join teams t on t.id = p.team_id where t.event_id = $1 order by p.name`,
     [event.id],
   );
@@ -296,7 +317,7 @@ export async function adminGetEvent(slug: string) {
     ...t,
     participants: people
       .filter((p) => p.team_id === t.id)
-      .map((p) => ({ id: p.id, name: p.name, drawn: p.drawn, locked: p.locked })),
+      .map((p) => ({ id: p.id, name: p.name, drawn: p.drawn, locked: p.locked, attendance: p.attendance })),
     exclusions: ex.filter((e) => e.team_id === t.id).map(({ a_id, b_id }) => ({ a_id, b_id })),
   }));
   return { event, teams: out };
@@ -320,7 +341,7 @@ export async function adminCreateEvent(input: { name: string; slug?: string; bud
 
 export async function adminUpdateEvent(
   id: string,
-  input: Partial<{ name: string; budget: string; exchange_date: string; message: string; is_active: boolean }>,
+  input: Partial<{ name: string; budget: string; exchange_date: string; message: string; is_active: boolean; draw_open: boolean }>,
 ) {
   const [e] = await query<EventRow>(
     `update events set
@@ -328,7 +349,8 @@ export async function adminUpdateEvent(
         budget = case when $3::boolean then $4 else budget end,
         exchange_date = case when $5::boolean then $6::date else exchange_date end,
         message = case when $7::boolean then $8 else message end,
-        is_active = coalesce($9, is_active)
+        is_active = coalesce($9, is_active),
+        draw_open = coalesce($10, draw_open)
       where id = $1 returning *`,
     [
       id,
@@ -340,6 +362,7 @@ export async function adminUpdateEvent(
       input.message !== undefined,
       input.message !== undefined ? cleanText(input.message, 500) : null,
       input.is_active ?? null,
+      typeof input.draw_open === "boolean" ? input.draw_open : null,
     ],
   );
   if (!e) throw new UserError("Evento no encontrado", 404);
@@ -417,6 +440,11 @@ export async function adminResetParticipant(participantId: string) {
             failed_attempts = 0, locked_until = null where id = $1`,
     [participantId],
   );
+}
+
+/** Borra la respuesta de asistencia para que se le vuelva a preguntar. */
+export async function adminResetAttendance(participantId: string) {
+  await query(`update participants set attendance = null, attendance_at = null where id = $1`, [participantId]);
 }
 
 export async function adminUnlockParticipant(participantId: string) {
